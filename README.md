@@ -108,7 +108,7 @@ O board **abre e roda tarefas** só com o primeiro grupo. Os outros ligam partes
 | Ferramenta | O que liga |
 |---|---|
 | `tmux` | `board agentes`: uma aba por agente, mostrando o código que ele escreve |
-| [`ai-memory`](https://github.com/akitaonrails/ai-memory) | o servidor da memória compartilhada (menus Memória e Controle). Instale pelo release dele; a montagem de servidor, backup e reserva está em [`memoria/`](memoria/) |
+| [`ai-memory`](https://github.com/akitaonrails/ai-memory), de **Fabio Akita** | o servidor da memória compartilhada (menus Memória e Controle). Instale pelo release dele; a montagem de servidor, backup e reserva está em [`memoria/`](memoria/) |
 | [Obsidian](https://obsidian.md) | ver a memória como cofre. O grafo do board **não** depende do app, só do espelho que o `memoria-obsidian` cria |
 | [`gh`](https://cli.github.com), logado | entrega por Pull Request |
 | `rclone` com um remoto `gdrive_backup` | backups no Google Drive e a reserva da memória |
@@ -254,3 +254,17 @@ Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram
 | `memoria/` | a montagem da memória compartilhada: servidor, backup, reserva e espelho |
 
 Licença: [MIT](LICENSE).
+
+---
+
+## Créditos
+
+- **[ai-memory](https://github.com/akitaonrails/ai-memory)**, de **Fabio Akita** ([@akitaonrails](https://github.com/akitaonrails)), licença MIT:
+  a memória de longo prazo compartilhada entre os agentes, com MCP e captura automática. É ela que o board lê para
+  desenhar o grafo e o galpão, separar o romaneio e conferir os backups. O board **não inclui nem modifica** o
+  ai-memory: ele se instala à parte, pelo release oficial.
+- **Nosso:** o board e a montagem em [`memoria/`](memoria/) (servidor, backup, reserva e espelho), e a ideia de tratar a
+  memória como um armazém: mentes, endereço, romaneio.
+- Os motores são os CLIs dos próprios fabricantes: [Claude Code](https://docs.claude.com/claude-code) (Anthropic),
+  [Codex](https://github.com/openai/codex) (OpenAI), Antigravity/`agy` (Google) e [opencode](https://github.com/sst/opencode).
+  O board só os chama; cada um tem a própria conta, o próprio plano e os próprios termos.

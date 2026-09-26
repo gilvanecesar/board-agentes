@@ -1,7 +1,7 @@
 # Memória compartilhada: servidor, backup, reserva e espelho
 
-A memória que os agentes do board compartilham roda num servidor [ai-memory](https://github.com/akitaonrails/ai-memory)
-(release oficial, sem alteração). Esta pasta tem a **montagem** em volta dele: o serviço, o backup noturno, a reserva
+A memória que os agentes do board compartilham roda num servidor [ai-memory](https://github.com/akitaonrails/ai-memory),
+de **Fabio Akita** ([@akitaonrails](https://github.com/akitaonrails)), licença MIT (release oficial, sem alteração). Esta pasta tem a **montagem** em volta dele: o serviço, o backup noturno, a reserva
 para quando o servidor cair e o espelho que alimenta o grafo e o galpão do board.
 
 ```

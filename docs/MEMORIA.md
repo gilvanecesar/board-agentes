@@ -1,7 +1,7 @@
 # A memória: o galpão, as mentes e o romaneio
 
 O board usa uma memória **compartilhada entre os motores** (Claude, Codex, Gemini e opencode): o que um aprende, o
-outro sabe. Quem guarda é um servidor [ai-memory](https://github.com/akitaonrails/ai-memory) sempre ligado; a
+outro sabe. Quem guarda é um servidor [ai-memory](https://github.com/akitaonrails/ai-memory), de **Fabio Akita** (MIT), sempre ligado; a
 montagem (servidor, backup, reserva e espelho) está em [`memoria/`](../memoria/).
 
 Guardar é a parte fácil. O difícil é **achar e separar a memória certa na hora certa**. Por isso o board trata a
