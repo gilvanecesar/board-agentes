@@ -220,6 +220,12 @@ board agentes                       # tmux: uma aba por agente
 
 ![Consumo](docs/img/consumo.png)
 
+**Monitoramento**: o mapa do sistema inteiro, com o estado lido de verdade: os 4 motores ligados à memória, o
+board copiando os dados para o servidor, os bancos mandando backup, e o servidor levando tudo ao Drive.
+Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram trocados.)*
+
+![Monitoramento](docs/img/monitoramento.png)
+
 **"Já tratei disso?"**: a busca mostra primeiro o que a memória tem.
 
 ![Busca na memória](docs/img/busca-na-memoria.png)
