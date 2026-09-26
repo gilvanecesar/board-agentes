@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" role="img" aria-label="Como o board funciona: do pedido à entrega, conferido em três camadas, com memória compartilhada e backups">
+  <title>Como o board funciona</title>
+  <defs>
+    <style>
+      text { font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #edf1e9; }
+      .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 2.6px; fill: #87958b; }
+      .h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.8px; }
+      .t { font-size: 19px; font-weight: 700; text-anchor: middle; }
+      .s { font-size: 14px; fill: #a8b3aa; text-anchor: middle; }
+      .ps { font-size: 14px; fill: #a8b3aa; }
+      .pt { font-size: 19px; font-weight: 700; }
+      .chip { font-size: 13px; font-weight: 600; fill: #b9ed80; text-anchor: middle; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .loop { font-size: 14px; fill: #edc27b; text-anchor: middle; font-weight: 600; }
+      .lbl { font-size: 13px; fill: #87958b; text-anchor: middle; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .ico { fill: none; stroke: #b9ed80; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      .ico2 { fill: none; stroke: #edf1e9; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      .ring { fill: #1a211c; stroke: #3b463f; stroke-width: 1.5; }
+      .ring-on { fill: #1d2a1b; stroke: #b9ed80; stroke-width: 1.5; }
+      .seta { stroke: #b9ed80; stroke-width: 2; fill: none; marker-end: url(#ponta); }
+      .seta-dim { stroke: #5b6a60; stroke-width: 2; fill: none; marker-end: url(#ponta-dim); stroke-dasharray: 5 6; }
+      .painel { fill: #191d1b; stroke: #2b322e; stroke-width: 1.5; }
+      .pchip { fill: #1d2a1b; stroke: #b9ed8055; stroke-width: 1; }
+    </style>
+    <marker id="ponta" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b9ed80"/></marker>
+    <marker id="ponta-dim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5b6a60"/></marker>
+    <marker id="ponta-amb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#edc27b"/></marker>
+    <!-- ícones 24×24, traço -->
+    <symbol id="i-voce" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></symbol>
+    <symbol id="i-fila" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></symbol>
+    <symbol id="i-agente" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+    <symbol id="i-portao" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-revisor" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M8 10.5h5M10.5 8v5"/></symbol>
+    <symbol id="i-qa" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5.2 9.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9V3"/><path d="M7.4 15h9.2"/></symbol>
+    <symbol id="i-entrega" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4"/><path d="m13 5-2 2 2 2"/></symbol>
+    <symbol id="i-olho" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-memoria" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="11" cy="18" r="2.5"/><path d="M8.4 6.6 15.6 7.6M7.2 8.2l2.8 7.6M16.6 10.2l-4.3 6"/></symbol>
+    <symbol id="i-servidor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></symbol>
+    <symbol id="i-lua" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-nuvem" viewBox="0 0 24 24"><path d="M7 19a5 5 0 1 1 .9-9.9A6 6 0 0 1 19.4 11 4 4 0 0 1 18 19H7Z"/><path d="M12 16v-5M9.5 13.5 12 11l2.5 2.5"/></symbol>
+    <symbol id="i-mac" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20"/></symbol>
+  </defs>
+
+  <rect width="1600" height="1000" rx="28" fill="#111413"/>
+
+  <!-- título -->
+  <text x="70" y="72" class="eyebrow">COMO O BOARD TRABALHA</text>
+  <text x="70" y="114" class="h1">Do pedido à entrega, conferido em três camadas.</text>
+
+  <!-- volta da reprova -->
+  <path d="M1240 208 C 1240 150, 580 150, 580 208" stroke="#edc27b" stroke-width="2" fill="none" stroke-dasharray="6 6" marker-end="url(#ponta-amb)"/>
+  <text x="910" y="158" class="loop">reprovou? volta para o agente, com o parecer, na mesma sessão</text>
+
+  <!-- esteira: 7 etapas -->
+  <g>
+    <line x1="186" y1="260" x2="310" y2="260" class="seta"/>
+    <line x1="406" y1="260" x2="530" y2="260" class="seta"/>
+    <line x1="626" y1="260" x2="750" y2="260" class="seta"/>
+    <line x1="846" y1="260" x2="970" y2="260" class="seta"/>
+    <line x1="1066" y1="260" x2="1190" y2="260" class="seta"/>
+    <line x1="1286" y1="260" x2="1410" y2="260" class="seta"/>
+  </g>
+  <g>
+    <circle cx="140" cy="260" r="44" class="ring"/><use href="#i-voce" x="116" y="236" width="48" height="48" class="ico2"/>
+    <text x="140" y="340" class="t">Você</text><text x="140" y="364" class="s">escreve a tarefa</text><text x="140" y="384" class="s">texto, print ou PDF</text>
+
+    <circle cx="360" cy="260" r="44" class="ring"/><use href="#i-fila" x="336" y="236" width="48" height="48" class="ico2"/>
+    <text x="360" y="340" class="t">Fila</text><text x="360" y="364" class="s">um agente por projeto</text><text x="360" y="384" class="s">⚡ ou em paralelo</text>
+
+    <circle cx="580" cy="260" r="44" class="ring-on"/><use href="#i-agente" x="556" y="236" width="48" height="48" class="ico"/>
+    <text x="580" y="340" class="t">Agente</text><text x="580" y="364" class="s">trabalha na pasta</text><text x="580" y="384" class="s">lê, edita, roda</text>
+
+    <circle cx="800" cy="260" r="44" class="ring-on"/><use href="#i-portao" x="776" y="236" width="48" height="48" class="ico"/>
+    <text x="800" y="340" class="t">Portão</text><text x="800" y="364" class="s">verificação do projeto</text><text x="800" y="384" class="s">check + testes, sem IA</text>
+
+    <circle cx="1020" cy="260" r="44" class="ring-on"/><use href="#i-revisor" x="996" y="236" width="48" height="48" class="ico"/>
+    <text x="1020" y="340" class="t">Revisor</text><text x="1020" y="364" class="s">lê o diff</text><text x="1020" y="384" class="s">contra o pedido</text>
+
+    <circle cx="1240" cy="260" r="44" class="ring-on"/><use href="#i-qa" x="1216" y="236" width="48" height="48" class="ico"/>
+    <text x="1240" y="340" class="t">QA</text><text x="1240" y="364" class="s">executa e tenta quebrar</text><text x="1240" y="384" class="s">usuário e atacante</text>
+
+    <circle cx="1460" cy="260" r="44" class="ring"/><use href="#i-entrega" x="1436" y="236" width="48" height="48" class="ico2"/>
+    <text x="1460" y="340" class="t">Entrega</text><text x="1460" y="364" class="s">direto, PR ou publicar</text><text x="1460" y="384" class="s">você confere e conclui</text>
+  </g>
+
+  <!-- linha 2: acompanha · motores · memória -->
+  <line x1="580" y1="400" x2="580" y2="446" class="seta-dim"/>
+
+  <rect x="60" y="450" width="440" height="220" rx="18" class="painel"/>
+  <use href="#i-olho" x="88" y="476" width="30" height="30" class="ico"/>
+  <text x="130" y="499" class="pt">Você acompanha</text>
+  <text x="88" y="538" class="ps">linha do tempo ao vivo de cada tarefa</text>
+  <text x="88" y="562" class="ps">conversa por projeto, igual ao terminal</text>
+  <text x="88" y="586" class="ps">tmux: uma aba por agente, com o código</text>
+  <text x="88" y="610" class="ps">consumo do plano de cada motor</text>
+  <text x="88" y="634" class="ps">controle dos backups e monitoramento</text>
+
+  <rect x="540" y="450" width="480" height="220" rx="18" class="painel"/>
+  <use href="#i-agente" x="568" y="476" width="30" height="30" class="ico"/>
+  <text x="610" y="499" class="pt">Quatro motores</text>
+  <rect x="568" y="522" width="120" height="32" rx="16" class="pchip"/><text x="628" y="543" class="chip">Claude Code</text>
+  <rect x="698" y="522" width="86" height="32" rx="16" class="pchip"/><text x="741" y="543" class="chip">Codex</text>
+  <rect x="794" y="522" width="120" height="32" rx="16" class="pchip"/><text x="854" y="543" class="chip">Gemini (agy)</text>
+  <rect x="568" y="562" width="100" height="32" rx="16" class="pchip"/><text x="618" y="583" class="chip">opencode</text>
+  <text x="568" y="626" class="ps">acabou a cota de um? outro assume pelo</text>
+  <text x="568" y="648" class="ps">bastão escrito: pedido, resumo, passos, git status</text>
+
+  <line x1="1022" y1="560" x2="1056" y2="560" class="seta"/>
+
+  <rect x="1060" y="450" width="480" height="220" rx="18" class="painel"/>
+  <use href="#i-memoria" x="1088" y="476" width="30" height="30" class="ico"/>
+  <text x="1130" y="499" class="pt">Memória compartilhada</text>
+  <text x="1088" y="538" class="ps">ai-memory num servidor único,</text>
+  <text x="1088" y="562" class="ps">só dentro da tailnet, com token</text>
+  <text x="1088" y="586" class="ps">MCP + captura automática nos 4 motores:</text>
+  <text x="1088" y="610" class="ps">trocar de modelo não perde o contexto</text>
+  <text x="1088" y="634" class="ps">grafo no board e no Obsidian</text>
+
+  <!-- linha 3: nada se perde -->
+  <text x="70" y="740" class="eyebrow">NADA SE PERDE</text>
+
+  <g>
+    <line x1="226" y1="850" x2="470" y2="850" class="seta"/>
+    <line x1="606" y1="850" x2="850" y2="850" class="seta"/>
+    <line x1="986" y1="850" x2="1230" y2="850" class="seta-dim"/>
+
+    <circle cx="180" cy="850" r="44" class="ring"/><use href="#i-servidor" x="156" y="826" width="48" height="48" class="ico2"/>
+    <text x="180" y="928" class="t">Servidor</text><text x="180" y="952" class="s">memória + bancos</text>
+
+    <circle cx="560" cy="850" r="44" class="ring-on"/><use href="#i-lua" x="536" y="826" width="48" height="48" class="ico"/>
+    <text x="560" y="928" class="t">Toda madrugada</text><text x="560" y="952" class="s">memória, board e bancos</text>
+
+    <circle cx="940" cy="850" r="44" class="ring-on"/><use href="#i-nuvem" x="916" y="826" width="48" height="48" class="ico"/>
+    <text x="940" y="928" class="t">Google Drive</text><text x="940" y="952" class="s">90 dias · só as pastas de backup</text>
+
+    <circle cx="1320" cy="850" r="44" class="ring"/><use href="#i-mac" x="1296" y="826" width="48" height="48" class="ico2"/>
+    <text x="1320" y="928" class="t">Reserva no Mac</text><text x="1320" y="952" class="s">servidor caiu? um comando</text>
+    <text x="1108" y="836" class="lbl">se precisar</text>
+  </g>
+</svg>

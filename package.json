@@ -1,0 +1,15 @@
+{
+  "name": "board",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Quadro de tarefas do dono com runner de claude — ferramenta local, sem dependência.",
+  "scripts": {
+    "start": "./board.sh",
+    "check": "node --check board.mjs && node --check board-cli.mjs && node --check busca.mjs",
+    "once": "node board.mjs"
+  },
+  "bin": {
+    "board": "./board-cli.mjs"
+  }
+}

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# board — atalho para o quadro de tarefas (~/Documents/DEV/board).
+#
+#   board                 sobe o board e mantém no ar (board.sh) → http://localhost:4488
+#   board abrir           abre o quadro no navegador
+#   board list            o quadro no terminal
+#   board add "..." proj  inclui tarefa   (--fila para já rodar, --pr para entregar por PR)
+#   board show 42 · run 42 · stop 42 · say 42 "..." · done 42 · rm 42
+#   board pausar · retomar · reiniciar
+#
+# Qualquer outro argumento é repassado ao board-cli.mjs.
+DIR="${BOARD_DIR:-$HOME/Documents/DEV/board}"
+PORTA="${BOARD_PORT:-4488}"
+
+if [ ! -d "$DIR" ]; then echo "board: não achei a pasta $DIR (defina BOARD_DIR)" >&2; exit 1; fi
+
+case "${1:-}" in
+  ""|up|start|subir)
+    exec "$DIR/board.sh"
+    ;;
+  abrir|open)
+    open "http://localhost:$PORTA"
+    ;;
+  ajuda|help|-h|--help)
+    sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  *)
+    exec node "$DIR/board-cli.mjs" "$@"
+    ;;
+esac
