@@ -498,8 +498,14 @@ function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
   const termos = palavrasDe(task.title + " " + task.text).filter((w) => df[w]);
   // Onde a palavra aparece conta: no título vale 3, na descrição 2, só no corpo 1. Senão a página longa que cita tudo
   // passa na frente da página que é SOBRE o assunto (medido em 26/09: a página certa perdia para as longas).
-  const nota = (x) => termos.reduce((a, w) => a + (x.corpo.includes(w) ? Math.log(pags.length / df[w]) * (x.tit.includes(w) ? 3 : x.desc.includes(w) ? 2 : 1) : 0), 0)
-    + (x.p.projeto === task.project ? 1.5 : 0);
+  // E o tamanho da página conta (como no BM25): palavra achada SÓ no corpo vale menos numa página longa — senão a página de
+  // 30 KB que cita tudo ganhava da regra curta que é exatamente sobre o assunto (medido em 26/09: "drawer lateral" ficava fora).
+  // IDF do BM25: palavra presente em metade das páginas ou mais vale ~0 ("board", "projeto", "tarefa" somavam pontos em tudo).
+  const idf = (w) => Math.max(0, Math.log((pags.length - df[w] + 0.5) / (df[w] + 0.5)));
+  const mediaTam = pags.reduce((a, x) => a + x.corpo.length, 0) / (pags.length || 1);
+  const nota = (x) => { const encurta = Math.min(1, Math.sqrt(mediaTam / Math.max(1, x.corpo.length)));
+    return termos.reduce((a, w) => a + (x.corpo.includes(w) ? idf(w) * (x.tit.includes(w) ? 3 : x.desc.includes(w) ? 2 : 0.5 * encurta) : 0), 0)
+      + (x.p.projeto === task.project ? 1.5 : 0); };
   for (const x of pags) x.nota = nota(x);
   const porNota = (a, b) => b.nota - a.nota || String(b.p.atualizada).localeCompare(String(a.p.atualizada));
   // O Dono: o NÚCLEO fixo vai sempre, na ordem que o dono escolheu (data/mentes.json "nucleoDono"); depois, até 4 regras

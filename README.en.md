@@ -96,7 +96,27 @@ All four deliveries passed the same checks.
 **An honest reading:** the trend favors the picking list (cheaper, faster, less generated text), but with 2 runs per
 side the difference is still within noise: A1 and A2 alone differed by 13 turns. And this was the worst case for it,
 because the memory had nothing about the task's subject. At scale, 6% to 12% is a lot of money and time, which is why
-the next measurement uses more runs, on a task whose subject the memory already knows.
+the second measurement used more runs.
+
+### Second measurement: the picking list cost more
+
+Another board task ("search and detail view in the pending list"), 4 runs per side, same commit and same model.
+B's picking list carried the owner's core rules plus engineering and UI memories.
+
+| | Cost | Turns | Time | Output tokens |
+|---|---|---|---|---|
+| **Average A (without)** | US$ 2.04 | 57.5 | 4m51s | 24,948 |
+| **Average B (with)** | US$ 2.50 (**+23%**) | 70.3 (**+22%**) | 6m32s (**+35%**) | 30,137 (**+21%**) |
+| Cost range | A: 1.72 – 2.39 | B: 2.35 – 2.58 | | |
+
+**Quality: a tie.** All 8 deliveries passed the checks and a functional test in the browser. **Where B spent more:**
+all 4 agents with the picking list built a new server route; among those without it, only 1 did (the others reused
+what already existed). Hypothesis: the owner's general rules ("do the whole thing", "document everything") push the
+agent to do more. And keyword picking missed the rule that mattered most for the task, because the request said the
+same thing in other words.
+
+**Conclusion of both measurements:** there is no proof that the picking list saves anything. That is why it can be
+turned off (`BOARD_ROMANEIO=0`), and the next step is picking by meaning (embeddings), not by keyword.
 
 ---
 

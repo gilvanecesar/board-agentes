@@ -19,7 +19,7 @@ memória como um **armazém (WMS)**.
 | **Curva de giro** | o que se usa muito fica perto da doca | nível 1 = a memória mais recente |
 | **Picking** | a tarefa pede, o sistema separa | o **romaneio** |
 | **Doca** | o caminhão que sai | o contexto do agente |
-| **Inventário** | conferir, juntar, descartar | *próximo passo* |
+| **Inventário** | conferir, juntar, descartar | o inventário noturno (painel 🌙 no Galpão) |
 
 > As telas abaixo são de um board de demonstração, com projetos e memórias fictícios.
 
@@ -90,8 +90,8 @@ Depois vêm as tarefas.
 
 ## Limites
 
-- **O ganho ainda não está provado.** Na primeira medição (2 rodadas por lado; números no [README](../README.md)), a
-  tendência foi de 6% menos custo e 12% menos tempo com o romaneio, mas a diferença ainda cabe no acaso.
+- **O romaneio não economizou.** Na 1ª medição (2 rodadas por lado) foi 6% mais barato, dentro do acaso; na 2ª
+  (4 rodadas por lado) foi **23% mais caro e 35% mais lento**, com a mesma qualidade. Números no [README](../README.md).
 - **O núcleo de "O Dono" é escolhido à mão:** as regras dele são gerais, e a busca por palavra não sabe quais pesam
   mais; por isso `nucleoDono` (no `mentes.json`) lista as que vão sempre. Regra de um projeto só leva `soNoProjeto: true`.
 - **O romaneio só ajuda quando a memória tem o assunto.** Numa tarefa sobre algo nunca tratado, ele leva memória geral.
