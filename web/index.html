@@ -703,7 +703,7 @@
   .network-health::before { content:''; width: 5px; height: 5px; background: currentColor; border-radius: 50%; }
   .network-health[data-state=online] { color: var(--cyan); border-color: #b9ed8040; background: #b9ed8007; }
   .network-health[data-state=offline] { color: var(--amber); border-color: #edc27b40; background: #edc27b07; }
-  .network-map { position: relative; height: 440px; isolation: isolate; background-image: radial-gradient(ellipse at 50% 42%,#b9ed800a,transparent 50%),radial-gradient(#889e8b24 .7px,transparent .7px); background-size: auto,20px 20px; }
+  .network-map { position: relative; height: 600px; isolation: isolate; background-image: radial-gradient(ellipse at 50% 42%,#b9ed800a,transparent 50%),radial-gradient(#889e8b24 .7px,transparent .7px); background-size: auto,20px 20px; }
   .map-caption { position:absolute; top:22px; left:28px; font:9px var(--mono); letter-spacing:1.4px; color:#839388; }
   .map-cross { color:var(--cyan); margin-right:8px; }
   .network-wires { position:absolute; inset:0; width:100%; height:100%; z-index:-1; }
@@ -711,14 +711,14 @@
   .network-wires .wire-base { stroke:#324336; stroke-width:6; stroke-dasharray:none; opacity:.35; }
   .network-wires [data-state=online] { stroke:#b9ed80; }
   .network-wires [data-state=offline] { stroke:var(--red); opacity:.6; }
-  .network-orbit { position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); border:1px solid #b9ed8014; border-radius:50%; z-index:-1; }
+  .network-orbit { position:absolute; left:47%; top:40%; transform:translate(-50%,-50%); border:1px solid #b9ed8014; border-radius:50%; z-index:-1; }
   .orbit-outer { width:330px; height:330px; border-style:dashed; }
   .orbit-inner { width:266px; height:266px; background:#b9ed8003; }
   .network-node { position:absolute; transform:translate(-50%,-50%); width:158px; min-height:136px; background:linear-gradient(145deg,#242e27,#19201c); border:1px solid #48584b; border-radius:14px; display:flex; align-items:center; flex-direction:column; padding:17px 10px 14px; box-shadow:0 12px 25px #0004,inset 0 1px #ffffff08; }
-  .node-mac { left:17%; top:42%; }
-  .node-saturno { left:83%; top:42%; }
-  .node-googleDrive { left:50%; top:81%; min-height:100px; width:186px; padding:12px; }
-  .node-aiMemory { left:50%; top:42%; width:182px; min-height:186px; border-color:#b9ed8070; background:linear-gradient(145deg,#31422c,#1c281d); box-shadow:0 0 60px #b9ed800d,0 20px 40px #0005,inset 0 1px #d9ffc530; }
+  .node-mac { left:14%; top:40%; }
+  .node-saturno { left:74%; top:40%; }
+  .node-googleDrive { left:47%; top:85%; min-height:100px; width:186px; padding:12px; }
+  .node-aiMemory { left:47%; top:40%; width:182px; min-height:186px; border-color:#b9ed8070; background:linear-gradient(145deg,#31422c,#1c281d); box-shadow:0 0 60px #b9ed800d,0 20px 40px #0005,inset 0 1px #d9ffc530; }
   .node-icon { color:#b9c9bc; width:30px; height:30px; margin-bottom:8px; }
   .node-icon svg,.service-icon svg { width:100%; height:100%; }
   .node-aiMemory .node-icon { color:var(--cyan); width:34px; height:34px; }
@@ -732,6 +732,15 @@
   .network-node[data-state=offline] { border-color:#f1948e60; }
   .memory-pages { border-top:1px solid #b9ed8025; margin-top:12px; padding-top:10px; font:500 24px 'Manrope',sans-serif; color:var(--cyan); width:100%; text-align:center; }
   .memory-pages small { display:block; color:#a5b59e; font:8px var(--mono); margin-top:1px; }
+  /* complemento do mapa: motores, board e os bancos (as origens dos backups) */
+  .map-extra { position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px;
+    background:linear-gradient(145deg,#222b25,#181e1a); border:1px solid #48584b; font-size:12px; white-space:nowrap; z-index:1; }
+  .map-extra small { display:block; color:var(--dim2); font:9px var(--mono); }
+  .map-extra i { width:7px; height:7px; border-radius:50%; background:var(--dim2); flex-shrink:0; }
+  .map-extra[data-state=online] { border-color:#b9ed8055; } .map-extra[data-state=online] i { background:var(--cyan); box-shadow:0 0 8px #b9ed8088; }
+  .map-extra[data-state=offline] { border-color:#f1948e70; } .map-extra[data-state=offline] i { background:var(--red); }
+  .map-extra.motor { padding:6px 10px; font-size:11px; }
+  .map-rot { position:absolute; transform:translate(-50%,-50%); font:9px var(--mono); color:var(--dim2); letter-spacing:.6px; background:#151b18; padding:1px 6px; border-radius:6px; }
   .map-legend { position:absolute; left:28px; bottom:20px; display:flex; gap:15px; font-size:9px; color:var(--dim2); }
   .map-legend span { display:flex; align-items:center; gap:5px; }
   .map-legend i { width:5px; height:5px; background:var(--dim2); border-radius:50%; }
@@ -946,6 +955,7 @@
     .network-heading { align-items:flex-start; flex-direction:column; gap:15px; padding:20px; }
     .network-heading h2 { font-size:21px; }
     .network-map { height:440px; }
+    .node-mac { left:17% !important; }.node-saturno { left:83% !important; }.node-aiMemory, .node-googleDrive, .network-orbit { left:50% !important; }
     .network-node { width:94px; min-height:119px; padding:12px 5px; border-radius:10px; }
     .network-node strong { font-size:12px; }
     .node-description { font-size:8px; text-align:center; }
@@ -957,6 +967,7 @@
     .node-state { font-size:8px; }
     .network-wires { top:-31px; height:440px; }
     .network-orbit { top:35%; }.orbit-outer { width:230px; height:230px; }.orbit-inner { width:200px; height:200px; }
+    .map-extra, .map-rot { display:none; }
     .map-caption { left:18px; font-size:8px; }
     .map-legend { left:18px; bottom:15px; font-size:8px; gap:10px; }.map-coordinate { display:none; }
     .network-services { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -1962,6 +1973,37 @@ async function renderControle() {
   el.querySelectorAll('[data-chave]').forEach((bt) => { bt.onclick = () => { GE.sel = bt.dataset.chave; navigateBoard('memoria'); }; });
   controleTimer = setTimeout(() => { if (atual()) renderControle(); }, 60000);
 }
+// O complemento do mapa: os 4 motores ligados à memória, o board (que copia os dados para o servidor) e as ORIGENS
+// dos backups (os bancos das VPSs), lidas da mesma lista do Controle. Nada aqui é inventado: sem leitura, fica cinza.
+async function pintarComplementoDoMapa(el, st) {
+  const box = el.querySelector('#mapaExtras'), fios = el.querySelector('#mapaFios'); if (!box || !fios) return;
+  let ctl = null; try { ctl = await api('/controle', { signal: AbortSignal.timeout(8000) }); } catch {}
+  const h = (iso) => iso ? (Date.now() - Date.parse(iso)) / 3600000 : Infinity;
+  const peca = (cls, x, y, estado, nome, sub, titulo) => `<div class="map-extra ${cls}" data-state="${estado}" style="left:${x}%;top:${y}%" title="${esc(titulo || '')}"><i></i><span>${esc(nome)}${sub ? `<small>${esc(sub)}</small>` : ''}</span></div>`;
+  const motores = st.aiMemory?.motores || [];
+  const xs = [26, 40, 54, 68];
+  let html = motores.map((m, i) => peca('motor', xs[i] ?? 26 + i * 14, 8, m.memoria && m.captura ? 'online' : 'offline', m.nome, m.memoria && m.captura ? 'memória + captura' : m.memoria ? 'sem captura' : 'desligado')).join('');
+  let linhas = motores.map((m, i) => `<path data-state="${m.memoria && m.captura ? 'online' : 'offline'}" d="M${(xs[i] ?? 26 + i * 14) * 10} 64L470 150"/>`).join('');
+  const c = st.copiaBoard || ctl?.copiaBoard || {};
+  const cEstado = c.quando ? (c.ok === false || h(c.quando) > 2 ? 'offline' : 'online') : 'unknown';
+  html += peca('', 14, 74, cEstado, 'board', c.quando ? 'cópia ' + new Date(c.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'aguardando a 1ª cópia', 'O board espelha data/ no servidor a cada 30 min');
+  html += '<span class="map-rot" style="left:44%;top:74%">dados do board · 30 min</span><span class="map-rot" style="left:14%;top:57%">roda no Mac</span>';
+  const origens = (ctl?.backups || []).filter((b) => b.id !== 'memoria' && b.id !== 'board');
+  origens.forEach((b, i) => {
+    const y = origens.length === 1 ? 40 : 18 + i * (44 / Math.max(1, origens.length - 1));
+    const oks = b.rodadas.filter((r) => r.ok), ult = b.rodadas[b.rodadas.length - 1], ok = oks[oks.length - 1];
+    const estado = !ok ? 'offline' : (ult && !ult.ok) || h(ok.fim) > 26 ? 'offline' : 'online';
+    html += peca('', 92, y, estado, b.nome, ok ? 'backup ' + new Date(ok.fim).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'sem backup', b.origem);
+    linhas += `<path data-state="${estado}" d="M920 ${y * 6}L740 240"/>`;
+  });
+  if (origens.length) html += '<span class="map-rot" style="left:84%;top:67%">backup dos bancos</span>';
+  html += '<span class="map-rot" style="left:63%;top:85%">backup toda madrugada</span><span class="map-rot" style="left:47%;top:15%">MCP + captura</span>';
+  box.innerHTML = html;
+  fios.querySelectorAll('[data-extra]').forEach((p) => p.remove());
+  fios.insertAdjacentHTML('beforeend', linhas.replaceAll('<path ', '<path data-extra="1" '));
+  fios.querySelector('[data-wire="board"]').dataset.state = st.mac?.online ? 'online' : 'unknown';
+  fios.querySelector('[data-wire="copia"]').dataset.state = cEstado;
+}
 async function renderMonitoring() {
   const el = $("#monitoring"); if (!el) return;
   clearTimeout(monitorTimer);
@@ -1971,7 +2013,8 @@ async function renderMonitoring() {
     <div class="network-heading"><div><span class="eyebrow">TOPOLOGIA DO WORKSPACE</span><h2>Uma rede. Todo o contexto.</h2></div><span class="network-health" id="networkHealth" role="status">Verificando serviços</span></div>
     <div class="network-map" aria-label="Mapa de conexão entre Mac, ai-memory, Saturno e Google Drive">
       <div class="map-caption"><span class="map-cross">＋</span> INFRAESTRUTURA / 01</div>
-      <svg class="network-wires" viewBox="0 0 1000 440" preserveAspectRatio="none" aria-hidden="true"><path class="wire-base" d="M170 185H830M500 185V365"/><path data-wire="mac" d="M170 185H500"/><path data-wire="saturno" d="M830 185H500"/><path data-wire="googleDrive" d="M500 185V365"/></svg>
+      <svg class="network-wires" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true" id="mapaFios"><path class="wire-base" d="M140 240H740"/><path data-wire="mac" d="M140 240H470"/><path data-wire="saturno" d="M740 240H470"/><path data-wire="googleDrive" d="M740 240V510H470"/><path data-wire="board" d="M140 444V240"/><path data-wire="copia" d="M140 444H760V272"/></svg>
+      <div id="mapaExtras"></div>
       <div class="network-orbit orbit-outer"></div><div class="network-orbit orbit-inner"></div>
       ${nodes.map(([key,name,desc,icon])=>`<div class="network-node node-${key}" data-service="${key}" data-state="unknown">
         <div class="node-icon">${monitorIcon(icon)}</div><strong>${name}</strong><span class="node-description">${desc}</span><span class="node-state">Aguardando leitura</span>
@@ -2036,6 +2079,7 @@ async function renderMonitoring() {
       el.querySelector('#monTime').textContent = `Última leitura · ${new Date().toLocaleTimeString('pt-BR')}`;
       pintarDocker(el, st.docker, st.timestamp);
       pintarMemoria(el, st);
+      pintarComplementoDoMapa(el, st);
     } catch {
       if (!current()) return;
       el.querySelector('#networkHealth').textContent = 'Não foi possível atualizar';

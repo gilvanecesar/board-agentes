@@ -51,6 +51,12 @@ disciplina serve aqui.
 - **Recebimento**: um agente propõe a mente de cada memória, e o dono confere as duvidosas antes de aprovar.
 - **Picking e romaneio**: em cada tarefa, o board escolhe as mentes e separa as memórias que ela pede.
 
+**Grafo**: cada ponto é uma página, cada linha uma ligação.
+
+![Grafo da memória](docs/img/memoria-grafo.png)
+
+**Galpão**: a mesma memória como armazém.
+
 ![Galpão da memória](docs/img/memoria-galpao.png)
 
 Na tarefa, o romaneio aparece na linha do tempo (📦), com cada memória que foi junto:
