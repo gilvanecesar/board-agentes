@@ -1,0 +1,18 @@
+# docker compose up -d   →   http://localhost:4488
+services:
+  board:
+    image: ghcr.io/gilvanecesar/board-agentes:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4488:4488"          # só na sua máquina: quem abre a tela comanda os agentes
+    environment:
+      # um dos dois (o do plano sai de `claude setup-token`):
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      BOARD_PRODUCAO: ${BOARD_PRODUCAO:-}
+      BOARD_DONO: ${BOARD_DONO:-}
+    volumes:
+      - ${PROJETOS:-./projetos}:/projetos   # a pasta com os seus projetos
+      - board-data:/app/data                # o quadro, os logs e as configurações
+volumes:
+  board-data:

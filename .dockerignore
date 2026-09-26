@@ -1,0 +1,7 @@
+data/
+.git/
+docs/
+node_modules/
+*.png
+.DS_Store
+board.env
