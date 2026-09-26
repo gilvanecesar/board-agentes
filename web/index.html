@@ -861,6 +861,26 @@
   .gp-aprovar { height: 36px; padding: 0 16px; border-radius: 10px; background: var(--cyan); color: #10140f; font-weight: 700; }
   .gp-mente-ficha { font-size: 13px; margin-bottom: 10px; display: grid; gap: 2px; }
   .gp-mente-ficha small { color: var(--dim2); font-size: 12px; }
+  .inv { border: 1px solid #b9ed8033; background: #b9ed8006; border-radius: 14px; padding: 12px 16px; display: grid; gap: 10px; }
+  .inv-cab { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; cursor: pointer; list-style: none; }
+  .inv-cab::-webkit-details-marker { display: none; }
+  .inv-cab span { color: var(--dim2); font: 11px var(--mono); flex: 1; }
+  .inv-sec { display: grid; gap: 6px; }
+  .inv-sec h4 { margin: 6px 0 0; font-size: 13px; }
+  .inv-dica { color: var(--dim2); font-size: 12px; margin: 0; }
+  .inv-item { background: #111413; border-radius: 10px; padding: 8px 10px; display: grid; gap: 8px; }
+  .inv-lin { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  .inv-pct { font: 700 12px var(--mono); color: var(--cyan); min-width: 38px; }
+  .inv-tits { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; }
+  .inv-tits i { color: var(--dim2); font-style: normal; }
+  .inv-tits small { width: 100%; color: var(--dim2); font-size: 11px; }
+  .inv-link { text-align: left; font-size: 13px; text-decoration: underline; text-decoration-color: #ffffff30; }
+  .inv-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .inv-acoes small { color: var(--dim2); font: 10px var(--mono); }
+  .inv-bt { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); font-size: 12px; }
+  .inv-bt.forte { background: var(--cyan); color: #10140f; border-color: var(--cyan); font-weight: 700; }
+  .inv-bt.perigo { border-color: var(--red); color: var(--red); }
+  .inv-prev { border-top: 1px dashed var(--line2); padding-top: 8px; font-size: 13px; display: grid; gap: 8px; }
   .gp-endereco { font: 700 12px var(--mono); color: var(--cyan); margin-bottom: 10px; letter-spacing: .5px; }
   /* ── Controle ── */
   .controle { display: grid; gap: 0; }
@@ -1801,6 +1821,55 @@ function ligarRevisaoDasMentes(el) {
   el.querySelectorAll('[data-abrir]').forEach((b) => { b.onclick = () => abrirPaginaDaMemoria(b.dataset.abrir, false); });
   const ap = el.querySelector('[data-aprovar]'); if (ap) ap.onclick = () => atualiza('/memoria/mentes/aprovar', {});
 }
+// ── Inventário (dentro do Galpão): novas sem mente, suspeitas de repetidas e vencidas. O servidor acha; o dono decide.
+const INV = { dados: null, carregando: false, prop: {}, confirma: null };
+async function carregarInventario(forcar) {
+  if (INV.carregando) return; INV.carregando = true;
+  try { INV.dados = await api('/memoria/inventario' + (forcar ? '/rodar' : ''), forcar ? { method: 'POST' } : {}); } catch (e) { toast(e.message); }
+  INV.carregando = false; desenharGalpao();
+}
+function inventarioHtml() {
+  const d = INV.dados;
+  if (!d) { if (!INV.carregando) carregarInventario(false); return '<div class="inv"><div class="docker-vazio">carregando o inventário…</div></div>'; }
+  if (!d.em) return `<div class="inv"><div class="inv-cab"><b>Inventário</b><span>ainda não rodou</span><button class="inv-bt" data-inv-rodar>Contar agora</button></div></div>`;
+  const tit = (k) => esc((GE.dados.nos.find((n) => n.chave === k) || {}).titulo || k);
+  const abre = (k) => `<button class="inv-link" data-abrir="${esc(k)}">${tit(k)}</button>`;
+  const rep = d.repetidas.map((r) => {
+    const id = r.chaves.slice().sort().join('|'); const p = INV.prop[id];
+    const corpo = !p ? '' : p.carregando ? '<div class="inv-prev">a IA está lendo as páginas e escrevendo a versão única…</div>'
+      : p.naoJuntar ? `<div class="inv-prev">🤔 <b>A IA acha que não são repetidas:</b> ${esc(p.naoJuntar)}</div>`
+      : `<div class="inv-prev"><div class="md">${mdToHtml(p.texto)}</div><div class="inv-acoes"><button class="inv-bt forte" data-inv-aplicar="${esc(p.id)}">Aplicar: fica só esta${r.chaves.length > 2 ? ` (apaga as outras ${r.chaves.length - 1})` : ' (apaga a outra)'}</button><small>US$ ${(p.custo || 0).toFixed(3)} · a 1ª página recebe o texto</small></div></div>`;
+    return `<div class="inv-item"><div class="inv-lin"><span class="inv-pct">${Math.round(r.parecenca * 100)}%</span><div class="inv-tits">${r.chaves.map(abre).join('<i>⟷</i>')}</div>
+      <div class="inv-acoes"><button class="inv-bt" data-inv-juntar="${esc(r.chaves.join(','))}" ${p && p.carregando ? 'disabled' : ''}>Juntar</button><button class="inv-bt" data-inv-ignorar-grupo="${esc(r.chaves.join(','))}" title="Não são repetidas: não mostrar de novo">Não são</button></div></div>${corpo}</div>`;
+  }).join('') || '<div class="docker-vazio">nenhuma suspeita de repetição</div>';
+  const venc = d.vencidas.map((v) => `<div class="inv-item"><div class="inv-lin"><div class="inv-tits">${abre(v.chave)}<small>${esc(v.projeto)} · ${esc(v.motivo)}</small></div>
+    <div class="inv-acoes">${INV.confirma === v.chave ? `<button class="inv-bt perigo" data-inv-descartar="${esc(v.chave)}">Confirmar: apagar da memória</button>` : `<button class="inv-bt" data-inv-quase="${esc(v.chave)}">Descartar</button>`}<button class="inv-bt" data-inv-ignorar="${esc(v.chave)}">Manter</button></div></div></div>`).join('') || '<div class="docker-vazio">nada vencido</div>';
+  const novas = d.novas.length ? `<div class="inv-lin"><span>${d.novas.length} memória(s) nova(s) sem mente: ${d.novas.slice(0, 4).map((x) => abre(x.chave)).join(', ')}${d.novas.length > 4 ? '…' : ''}</span><button class="inv-bt" data-inv-enderecar>Propor mentes</button></div>` : '<div class="docker-vazio">toda memória tem endereço</div>';
+  const feitos = (d.feitos || []).slice(-3).reverse().map((f) => `${new Date(f.em).toLocaleDateString('pt-BR')} · ${f.acao}: ${f.chaves.length}`).join(' · ');
+  return `<details class="inv" ${store.get('invAberto', true) ? 'open' : ''}><summary class="inv-cab"><b>🌙 Inventário</b><span>contado ${new Date(d.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · toda madrugada às 2h · ${d.novas.length} novas · ${d.repetidas.length} suspeitas de repetição · ${d.vencidas.length} vencidas</span><button class="inv-bt" data-inv-rodar>${INV.carregando ? 'contando…' : 'Contar agora'}</button></summary>
+    <div class="inv-sec"><h4>Novas sem mente</h4>${novas}</div>
+    <div class="inv-sec"><h4>Suspeitas de repetição</h4><p class="inv-dica">Parecença pelo texto e pelo título. "Juntar" pede a uma IA a versão única (só com o seu clique); você vê antes de aplicar.</p>${rep}</div>
+    <div class="inv-sec"><h4>Vencidas</h4><p class="inv-dica">Descartar apaga da memória compartilhada. Fica uma cópia em data/inventario-descartadas e no backup da madrugada.</p>${venc}</div>
+    ${feitos ? `<div class="inv-dica">feito: ${esc(feitos)}</div>` : ''}</details>`;
+}
+function ligarInventario(el) {
+  const det = el.querySelector('details.inv'); if (det) det.ontoggle = () => store.set('invAberto', det.open);
+  const post = async (acao, corpo) => { try { return await api('/memoria/inventario/' + acao, { method: 'POST', body: corpo }); } catch (e) { toast(e.message); return null; } };
+  const recarrega = async () => { const g = await api('/memoria/grafo'); GE.dados = { ...GE.dados, ...g }; await carregarInventario(false); };
+  el.querySelectorAll('[data-inv-rodar]').forEach((b) => { b.onclick = (e) => { e.preventDefault(); carregarInventario(true); }; });
+  el.querySelectorAll('.inv [data-abrir]').forEach((b) => { b.onclick = () => abrirPaginaDaMemoria(b.dataset.abrir, false); });
+  const ench = el.querySelector('[data-inv-enderecar]'); if (ench) ench.onclick = async () => { const r = await post('enderecar-novas', {}); if (r) { toast(`${r.enderecadas} proposta(s) de mente: confira na lista (Porta-palete por Mente)`); recarrega(); } };
+  el.querySelectorAll('[data-inv-quase]').forEach((b) => { b.onclick = () => { INV.confirma = b.dataset.invQuase; desenharGalpao(); }; });
+  el.querySelectorAll('[data-inv-descartar]').forEach((b) => { b.onclick = async () => { INV.confirma = null; if (await post('descartar', { chave: b.dataset.invDescartar })) { toast('descartada'); recarrega(); } }; });
+  el.querySelectorAll('[data-inv-ignorar]').forEach((b) => { b.onclick = async () => { if (await post('ignorar', { chave: b.dataset.invIgnorar })) carregarInventario(false); }; });
+  el.querySelectorAll('[data-inv-ignorar-grupo]').forEach((b) => { b.onclick = async () => { if (await post('ignorar', { chaves: b.dataset.invIgnorarGrupo.split(',') })) carregarInventario(false); }; });
+  el.querySelectorAll('[data-inv-juntar]').forEach((b) => { b.onclick = async () => {
+    const chaves = b.dataset.invJuntar.split(','); const id = chaves.slice().sort().join('|');
+    INV.prop[id] = { carregando: true }; desenharGalpao();
+    const r = await post('juntar', { chaves }); INV.prop[id] = r || undefined; desenharGalpao();
+  }; });
+  el.querySelectorAll('[data-inv-aplicar]').forEach((b) => { b.onclick = async () => { if (await post('aplicar', { id: b.dataset.invAplicar })) { toast('juntadas: ficou uma página só'); INV.prop = {}; recarrega(); } }; });
+}
 function desenharGalpao() {
   const el = $('#galpao'); if (!el || !GE.dados) return;
   GE.pp = GE.pp || store.get('galpaoPP', 'tipo');
@@ -1812,6 +1881,7 @@ function desenharGalpao() {
   const achadas = GE.busca || GE.tema ? todos.filter(acesa).length : null;
   const M = GE.dados.mentes || {}; const porM = GE.pp === 'mente' && M.existe;
   let html = `<div class="gp-pp"><span>Porta-palete por</span><div class="gp-modo"><button data-pp="tipo" class="${porM ? '' : 'on'}">Tipo</button><button data-pp="mente" class="${porM ? 'on' : ''}" ${M.existe ? '' : 'disabled title="ainda não há endereçamento"'}>Mente</button></div>${M.existe ? `<span class="gp-status" data-st="${M.status}">${M.status === 'aprovada' ? '✓ endereçamento aprovado' : 'endereçamento PROPOSTO · ' + M.aRevisar + ' para conferir'}</span>` : ''}</div>`
+    + inventarioHtml()
     + (porM ? revisaoDasMentes() : '')
     + `<div class="gp-kpis"><div><b>${ordem.length}</b><span>ruas (projetos)</span></div><div><b>${todos.length}</b><span>posições ocupadas</span></div><div><b>${semana}</b><span>mexidas nos últimos 7 dias</span></div>${achadas != null ? `<div><b>${achadas}</b><span>localizadas na busca</span></div>` : ''}</div>
     <div class="gp-legenda"><span><i class="gp-p g0"></i>hoje</span><span><i class="gp-p g1"></i>7 dias</span><span><i class="gp-p g2"></i>30 dias</span><span><i class="gp-p g3"></i>90 dias</span><span><i class="gp-p g4"></i>mais antiga</span><span class="gp-nota">${porM ? 'porta-palete = MENTE' : 'porta-palete = TIPO da memória'} · cor = última edição (ou a entrada na memória) · nível 1 = a mais recente, perto da doca · endereço R-P-N-P</span></div>`;
@@ -1845,6 +1915,7 @@ function desenharGalpao() {
   el.innerHTML = html || '<div class="docker-vazio">nenhuma rua visível</div>';
   el.querySelectorAll('[data-pp]').forEach((b) => { b.onclick = () => { GE.pp = b.dataset.pp; store.set('galpaoPP', GE.pp); desenharGalpao(); }; });
   ligarRevisaoDasMentes(el);
+  ligarInventario(el);
   el.querySelectorAll('.gp-p[data-chave]').forEach((b) => { b.onclick = async () => {
     el.querySelectorAll('.gp-sel').forEach((x) => x.classList.remove('gp-sel')); b.classList.add('gp-sel');
     await abrirPaginaDaMemoria(b.dataset.chave, false);

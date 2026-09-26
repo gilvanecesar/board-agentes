@@ -487,7 +487,8 @@ function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
   const pags = [];
   for (const [chave, end] of Object.entries(m.mapa)) {
     const p = g._porChave.get(chave); if (!p || end.mente === "triagem") continue;
-    if (end.soNoProjeto && p.projeto !== task.project) continue; // regra de UM projeto (ex.: um "commit + push na main" de um projeto) não viaja
+    if (end.soNoProjeto && p.projeto !== task.project) continue;
+    if (end.confianca === "media" || end.confianca === "baixa") continue; // proposta ainda não conferida pelo dono // regra de UM projeto (ex.: um "commit + push na main" de um projeto) não viaja
     if (ate && !(new Date(p.atualizada).getTime() < Date.parse(ate))) continue; // experimento: só o que já existia naquela data
     pags.push({ chave, mente: end.mente, tambem: end.tambem || [], p, tit: semAcentoServidor(p.titulo + " " + p.id), desc: semAcentoServidor(p.descricao),
       corpo: semAcentoServidor(p.titulo + " " + p.id + " " + p.descricao + " " + tiraCabecalhos(p.bruto).slice(0, 4000)) });
@@ -520,6 +521,84 @@ function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
     em: now(), mentes: [...mentes], termos: termos.length, tokensAprox: Math.round(texto.length / 4), texto,
     itens: [...dono, ...daTarefa].map((x) => ({ chave: x.chave, titulo: x.p.titulo, mente: x.mente, nota: Number(x.nota.toFixed(2)) })),
   };
+}
+
+// ── Inventário da memória (o inventário do galpão) ─────────────────────────────────────────────────────
+// Toda madrugada (02h), SEM IA e sem custo: acha memória NOVA sem mente, suspeitas de REPETIDAS e as VENCIDAS
+// (sessões, notas de status com data, cópias grandes). Nada muda sozinho: o dono decide na tela. Só o "Juntar" chama IA,
+// e só quando o dono clica (escreve a versão única para ele ver antes de aplicar). Estado em data/inventario.json.
+const INVENTARIO_FILE = join(DATA, "inventario.json");
+const lerInventario = () => { try { return JSON.parse(readFileSync(INVENTARIO_FILE, "utf8")); } catch { return null; } };
+const gravarInventario = (x) => { writeFileSync(INVENTARIO_FILE + ".tmp", JSON.stringify(x, null, 1)); renameSync(INVENTARIO_FILE + ".tmp", INVENTARIO_FILE); };
+const radical = (w) => w.slice(0, 5); // "trabalha", "trabalhar", "trabalhem" → "traba"
+// o nome do dono aparece em muito título ("Como trabalhar com o <nome>") e não diz nada do assunto
+const NOME_DONO = semAcentoServidor(process.env.BOARD_DONO || "").split(/\s+/).filter(Boolean);
+function palavrasTitulo(t) { return new Set((semAcentoServidor(t).match(/[a-z0-9]{4,}/g) || []).filter((w) => !PARADAS.has(w) && w !== "dono" && !NOME_DONO.includes(w)).map(radical)); }
+function inventariar() {
+  grafoCache.em = 0; const g = montarGrafo(); if (!g._porChave) return null;
+  const m = lerMentes() || { mapa: {} }; const mapa = m.mapa || {};
+  const pags = [...g._porChave.values()].filter((p) => !/^(log-\d{4}-\d{2}|index|MEMORY)$/.test(p.id));
+  const agora = Date.now(), dias = (t) => (agora - t) / 86400000;
+  // 1) novas: estão na memória e não têm endereço
+  const novas = pags.filter((p) => !mapa[p.chave]).map((p) => ({ chave: p.chave, titulo: p.titulo, projeto: p.projeto, sessao: p.sessao }));
+  // 2) vencidas: sessão com mais de 7 dias, nota de status com data (mais de 14 dias), cópia grande
+  const vencidas = [];
+  for (const p of pags) {
+    const idade = dias(p.atualizada), tam = p.bruto.length;
+    const motivo = p.sessao && idade > 7 ? `resumo de sessão de ${Math.round(idade)} dias (o que importava já virou memória)`
+      : /onde paramos|onde estamos|estado em \d|status em \d/i.test(p.titulo) && idade > 14 ? `nota de status datada, de ${Math.round(idade)} dias`
+      : tam > 30000 ? `página grande (${Math.round(tam / 1000)} KB): pesa no contexto; confira se é cópia de documento ou se dá para resumir`
+      : /^(Revise a tarefa|Teste a entrega)/.test(p.titulo) ? "sessão do revisor/QA do board (não é memória de trabalho)" : null;
+    if (motivo) vencidas.push({ chave: p.chave, titulo: p.titulo, projeto: p.projeto, motivo });
+  }
+  // 3) suspeitas de repetidas: texto parecido (cosseno TF-IDF ≥ 0,5) OU mesma mente + 2 palavras do título em comum
+  const doc = pags.filter((p) => !p.sessao).map((p) => {
+    const ws = (semAcentoServidor(p.titulo + " " + p.descricao + " " + tiraCabecalhos(p.bruto).slice(0, 6000)).match(/[a-z0-9]{4,}/g) || []).filter((w) => !PARADAS.has(w));
+    return { p, tf: ws.reduce((a, w) => (a[w] = (a[w] || 0) + 1, a), {}), tit: palavrasTitulo(p.titulo), mente: (mapa[p.chave] || {}).mente };
+  });
+  const df = {}; for (const d of doc) for (const w in d.tf) df[w] = (df[w] || 0) + 1;
+  for (const d of doc) { let s2 = 0; d.v = {}; for (const w in d.tf) { const x = d.tf[w] * Math.log(doc.length / df[w]); d.v[w] = x; s2 += x * x; } d.n = Math.sqrt(s2) || 1; }
+  const cos = (a, b) => { let x = 0; for (const w in a.v) if (b.v[w]) x += a.v[w] * b.v[w]; return x / (a.n * b.n); };
+  const pares = [];
+  for (let i = 0; i < doc.length; i++) for (let j = i + 1; j < doc.length; j++) {
+    const a = doc[i], b = doc[j]; const c = cos(a, b);
+    const comum = [...a.tit].filter((w) => b.tit.has(w)).length, jac = comum / (Math.min(a.tit.size, b.tit.size) || 1);
+    // título parecido só conta com um mínimo de texto em comum (≥ 0,15): senão "Saturno" no título juntava assuntos sem nada a ver
+    const titulo = a.mente && a.mente === b.mente && comum >= 2 && jac >= 0.6 && c >= 0.15;
+    if (c >= 0.5 || titulo) pares.push({ a: a.p.chave, b: b.p.chave, texto: Number(c.toFixed(2)), titulo });
+  }
+  // agrupa pares encadeados (A~B, B~C → um grupo) e fica com os 15 mais parecidos
+  const grupo = new Map(); const achar = (k) => { while (grupo.get(k) && grupo.get(k) !== k) k = grupo.get(k); return k; };
+  for (const x of pares) { grupo.set(x.a, achar(x.a) || x.a); grupo.set(x.b, achar(x.b) || x.b); const ra = achar(x.a), rb = achar(x.b); if (ra !== rb) grupo.set(rb, ra); }
+  const grupos = {}; for (const k of grupo.keys()) (grupos[achar(k)] = grupos[achar(k)] || new Set()).add(k);
+  const titulo = (k) => (g._porChave.get(k) || {}).titulo || k;
+  const repetidas = Object.values(grupos).filter((set) => set.size >= 2 && set.size <= 5).map((set) => {
+    const ks = [...set]; const ps = pares.filter((x) => set.has(x.a) && set.has(x.b));
+    return { chaves: ks, titulos: ks.map(titulo), parecenca: Math.max(...ps.map((x) => x.texto)), porTitulo: ps.some((x) => x.titulo) };
+  }).sort((a, b) => b.parecenca - a.parecenca).slice(0, 15);
+  const antes = lerInventario() || {}; const ign = new Set(antes.ignoradas || []);
+  const chaveGrupo = (ks) => [...ks].sort().join("|");
+  const inv = { em: now(), total: pags.length, ignoradas: [...ign], juntar: antes.juntar || {}, feitos: antes.feitos || [],
+    novas, vencidas: vencidas.filter((x) => !ign.has(x.chave)), repetidas: repetidas.filter((r) => !ign.has(chaveGrupo(r.chaves))) };
+  gravarInventario(inv);
+  logEvent("inventario", { t: "solto", texto: `inventário da memória: ${novas.length} novas sem mente · ${repetidas.length} grupos suspeitos de repetição · ${vencidas.length} vencidas` });
+  return inv;
+}
+// Roda uma vez por madrugada (às 2h, depois dos backups). Conferido a cada 10 min.
+function inventarioDaMadrugada() {
+  const h = new Date().getHours(), hoje = new Date().toLocaleDateString("sv-SE");
+  const ult = (lerInventario() || {}).em; if (h !== 2 || (ult && new Date(ult).toLocaleDateString("sv-SE") === hoje)) return;
+  try { inventariar(); } catch (e) { console.error("inventário falhou:", e.message); }
+}
+// Caminho da página DENTRO do projeto no ai-memory (o espelho usa o nome do projeto como pasta).
+const caminhoNoProjeto = (p) => relative(join(ESPELHO_MEMORIA, p.projeto), p.caminho);
+function apagarDaMemoria(chave) {
+  const g = montarGrafo(); const p = g._porChave && g._porChave.get(chave); if (!p) throw new Error("memória não encontrada: " + chave);
+  const guarda = join(DATA, "inventario-descartadas"); mkdirSync(guarda, { recursive: true });
+  writeFileSync(join(guarda, chave.replace(/[^\w.-]+/g, "_") + ".md"), p.bruto); // cópia local para desfazer à mão, além do backup noturno
+  execFileSync("ai-memory", ["delete-page", "--workspace", "default", "--project", p.projeto, "--path", caminhoNoProjeto(p)],
+    { env: { ...process.env, ...envMemoria(), PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` }, timeout: 30000, stdio: "pipe" });
+  const m = lerMentes(); if (m && m.mapa[chave]) { delete m.mapa[chave]; gravarMentes(m); }
 }
 
 // O "tipo" de uma memória (vira o porta-palete na vista Galpão): pela pasta, ou pelo type do cabeçalho original
@@ -726,6 +805,11 @@ function alertasDoControle() {
     if (m.filaPendente > 200) a.push({ nivel: "aviso", texto: `${m.filaPendente} capturas esperando para subir à memória.` });
     if (m.espelho ? h(m.espelho.quando) > 0.5 : process.uptime() > 900) a.push({ nivel: "aviso", texto: "O espelho da memória (Obsidian e o grafo) está desatualizado." });
   }
+  const inv = lerInventario();
+  if (inv && inv.em) {
+    const n = (inv.novas || []).length + (inv.repetidas || []).length + (inv.vencidas || []).length;
+    if (n) a.push({ nivel: "aviso", texto: `Inventário da memória: ${n} para conferir (${(inv.novas || []).length} novas, ${(inv.repetidas || []).length} suspeitas de repetição, ${(inv.vencidas || []).length} vencidas) — menu Memória → Galpão.` });
+  }
   const c = CONTROLE.copiaBoard;
   if (c && (c.ok === false || (c.quando ? h(c.quando) > 2 : process.uptime() > 2400))) a.push({ nivel: "aviso", texto: "A cópia do board para o Saturno " + (c.ok === false ? "falhou." : "está atrasada.") });
   const s = CONTROLE.saturno;
@@ -733,6 +817,7 @@ function alertasDoControle() {
   return a;
 }
 if (COM_ROTINAS) {
+  setInterval(inventarioDaMadrugada, 10 * 60000);
   setTimeout(lerControle, 20000);
   setInterval(lerControle, 60000);
 }
@@ -1063,7 +1148,7 @@ const MOTORES = {
   claude: {
     rotulo: "Claude", bin: "claude", moeda: "usd",
     exemploModelo: "opus, sonnet, haiku",
-    args: ({ prompt, regras, tools, modelo, resume, esforco }) => {
+    args: ({ prompt, regras, tools, modelo, resume, esforco, semCaptura }) => {
       const a = ["-p", prompt, "--append-system-prompt", regras,
         "--output-format", "stream-json", "--verbose", "--allowedTools", tools];
       if (PERMISSION === "bypass") a.push("--dangerously-skip-permissions");
@@ -1071,6 +1156,10 @@ const MOTORES = {
       if (modelo) a.push("--model", modelo);
       if (esforco) a.push("--effort", esforco);
       if (resume) a.push("--resume", resume);
+      // Revisor e QA sem os ganchos do usuário (é lá que mora a captura do ai-memory): as sessões deles viravam
+      // "memória" — "Revise a tarefa #166" — e o inventário tinha de varrer toda noite. Modelo, permissão e
+      // ferramentas continuam vindo por aqui, então nada muda no trabalho deles.
+      if (semCaptura) a.push("--setting-sources", "project,local");
       return a;
     },
     trata: (ev, ctx) => {
@@ -1273,7 +1362,7 @@ function runMotor(task, prompt, { resume, quem = "agente", regras, modelo, tools
       prompt: safe, regras: regras || houseRules(task, project), tools: tools || TOOLS,
       modelo: modeloEfetivo,
       resume, dir: project.dir,
-      esforco,
+      esforco, semCaptura: quem !== "agente",
       imagens: quem === "agente" ? (task.anexos || []).map((a) => a.caminho || join(ANEXOS, a.id)) : [],
     });
 
@@ -2767,6 +2856,73 @@ const server = createServer(async (req, res) => {
       if (!texto.trim()) return json(res, 400, { error: "escreva o pedido" });
       const rom = montarRomaneio({ title: titleOf(texto), text: texto, project: String(url.searchParams.get("projeto") || "DEV") }, { todasMentes: url.searchParams.has("todas"), ate: url.searchParams.get("ate") || null });
       return json(res, 200, rom || { vazio: true, motivo: (lerMentes() || {}).status !== "aprovada" ? "endereçamento não aprovado" : "nada relacionado" });
+    }
+    // ── Inventário da memória: ver, rodar, endereçar novas, descartar, juntar (só com clique do dono) ──
+    if (req.method === "GET" && path === "/api/memoria/inventario") return json(res, 200, lerInventario() || { em: null });
+    if (req.method === "POST" && path.startsWith("/api/memoria/inventario/")) {
+      const acao = path.split("/").pop(); const b = await readBody(req);
+      const refresca = () => { atualizarCofreObsidian(); };
+      try {
+        if (acao === "rodar") return json(res, 200, inventariar());
+        const inv = lerInventario() || inventariar();
+        if (acao === "enderecar-novas") {
+          // proposta pelas pistas (sem IA); confiança média → aparece na lista de conferência e NÃO vai ao romaneio até o dono conferir
+          const m = lerMentes(); if (!m) return json(res, 400, { error: "sem endereçamento" });
+          const g = montarGrafo(); let n = 0;
+          for (const x of inv.novas) {
+            const p = g._porChave.get(x.chave); if (!p || m.mapa[x.chave]) continue;
+            const texto = semAcentoServidor(p.titulo + " " + p.descricao + " " + tiraCabecalhos(p.bruto).slice(0, 2000));
+            const pista = Object.entries(pistasDaMente()).find(([, rx]) => rx.test(texto));
+            const mente = p.sessao ? "triagem" : pista ? pista[0] : (mentePorProjeto()[p.projeto] || "triagem");
+            m.mapa[x.chave] = { mente, tambem: [], confianca: p.sessao ? "alta" : "media", motivo: p.sessao ? "resumo de sessão" : pista ? "pista do assunto (inventário)" : "mente do projeto (inventário)" };
+            n++;
+          }
+          gravarMentes(m); inventariar(); return json(res, 200, { ok: true, enderecadas: n });
+        }
+        if (acao === "descartar") {
+          const k = String(b.chave || ""); if (!inv.vencidas.some((x) => x.chave === k)) return json(res, 400, { error: "só descarta o que o inventário apontou" });
+          apagarDaMemoria(k); inv.feitos.push({ em: now(), acao: "descartada", chaves: [k] }); inv.vencidas = inv.vencidas.filter((x) => x.chave !== k);
+          gravarInventario(inv); refresca(); return json(res, 200, { ok: true });
+        }
+        if (acao === "ignorar") {
+          const k = String(b.chave || (Array.isArray(b.chaves) ? [...b.chaves].sort().join("|") : ""));
+          if (!k) return json(res, 400, { error: "o que ignorar?" });
+          inv.ignoradas = [...new Set([...(inv.ignoradas || []), k])];
+          inv.vencidas = inv.vencidas.filter((x) => x.chave !== k); inv.repetidas = inv.repetidas.filter((r) => [...r.chaves].sort().join("|") !== k);
+          gravarInventario(inv); return json(res, 200, { ok: true });
+        }
+        if (acao === "juntar") {
+          const chaves = (Array.isArray(b.chaves) ? b.chaves : []).map(String);
+          const grupo = inv.repetidas.find((r) => [...r.chaves].sort().join("|") === [...chaves].sort().join("|"));
+          if (!grupo) return json(res, 400, { error: "grupo fora do inventário" });
+          const g = montarGrafo(); const ps = chaves.map((k) => g._porChave.get(k)).filter(Boolean);
+          const prompt = ["Estas páginas da memória compartilhada dos agentes parecem REPETIDAS.",
+            "Se tratam do MESMO assunto, escreva UMA página que junte tudo sem perder nenhum fato, regra, data ou motivo, sem inventar nada e sem repetir.",
+            "Formato: a 1ª linha é `# Título`; depois o texto em markdown, curto e direto, em português do Brasil.",
+            "Se NÃO forem o mesmo assunto (só parecidos), responda apenas `NAO_JUNTAR:` e o motivo em uma frase.",
+            ...ps.map((p, i) => `\n===== PÁGINA ${i + 1}: ${p.chave} =====\n${tiraCabecalhos(p.bruto).slice(0, 12000)}`)].join("\n");
+          const r = await execP("claude", ["-p", prompt, "--model", "sonnet", "--output-format", "json", "--no-session-persistence",
+            "--strict-mcp-config", "--setting-sources", "", "--tools", ""], 180000);
+          let d = null; try { d = JSON.parse(r.out); } catch { return json(res, 502, { error: "a IA não respondeu" }); }
+          const texto = String(d.result || "").trim(); const custo = d.total_cost_usd || 0;
+          const id = createHash("sha1").update([...chaves].sort().join("|")).digest("hex").slice(0, 10);
+          const prop = /^NAO_JUNTAR/i.test(texto) ? { chaves, naoJuntar: texto.replace(/^NAO_JUNTAR:?\s*/i, ""), custo, em: now() }
+            : { chaves, titulo: (texto.match(/^#\s+(.+)$/m) || [])[1] || "(sem título)", texto, custo, em: now() };
+          inv.juntar[id] = prop; gravarInventario(inv); return json(res, 200, { id, ...prop });
+        }
+        if (acao === "aplicar") {
+          const prop = inv.juntar[String(b.id || "")]; if (!prop || !prop.texto) return json(res, 400, { error: "não há versão única para aplicar" });
+          const g = montarGrafo(); const alvo = g._porChave.get(prop.chaves[0]); if (!alvo) return json(res, 404, { error: "a 1ª página sumiu" });
+          execFileSync("ai-memory", ["write-page", "--workspace", "default", "--project", alvo.projeto, "--path", caminhoNoProjeto(alvo),
+            "--tier", "semantic", "--kind", "Note", "--body", prop.texto],
+            { env: { ...process.env, ...envMemoria(), PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` }, timeout: 30000, stdio: "pipe" });
+          for (const k of prop.chaves.slice(1)) apagarDaMemoria(k);
+          delete inv.juntar[String(b.id)]; inv.feitos.push({ em: now(), acao: "juntadas", chaves: prop.chaves, em1: prop.chaves[0] });
+          inv.repetidas = inv.repetidas.filter((r) => !r.chaves.includes(prop.chaves[0]));
+          gravarInventario(inv); refresca(); return json(res, 200, { ok: true, ficou: prop.chaves[0] });
+        }
+        return json(res, 404, { error: "ação desconhecida" });
+      } catch (e) { return json(res, 500, { error: cut(String(e.stderr || e.message), 300) }); }
     }
     // ── Mentes: conferir e aprovar o endereçamento (só mexe em data/mentes.json) ──
     if (req.method === "GET" && path === "/api/memoria/mentes") return json(res, 200, resumoMentes(lerMentes()));

@@ -95,4 +95,6 @@ Depois vêm as tarefas.
 - **O núcleo de "O Dono" é escolhido à mão:** as regras dele são gerais, e a busca por palavra não sabe quais pesam
   mais; por isso `nucleoDono` (no `mentes.json`) lista as que vão sempre. Regra de um projeto só leva `soNoProjeto: true`.
 - **O romaneio só ajuda quando a memória tem o assunto.** Numa tarefa sobre algo nunca tratado, ele leva memória geral.
-- **Inventário** (juntar duplicadas, corrigir, descartar o vencido): ainda não existe.
+- **Inventário noturno** (painel 🌙 no Galpão): toda madrugada, sem IA, acha memórias novas sem mente, suspeitas de
+  repetição e vencidas. Nada muda sozinho: "Juntar" pede a uma IA a versão única e mostra antes de aplicar; "Descartar"
+  guarda uma cópia; "Não são"/"Manter" não voltam. O revisor e o QA do board rodam sem captura, para não virarem memória.
