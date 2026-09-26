@@ -1,5 +1,14 @@
 # board
 
+[![Licença MIT](https://img.shields.io/github/license/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413&label=release)](https://github.com/gilvanecesar/board-agentes/releases)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-b9ed80?logo=docker&logoColor=white&labelColor=111413)](https://github.com/gilvanecesar/board-agentes/pkgs/container/board-agentes)
+[![Node 20+](https://img.shields.io/badge/node-20%2B-b9ed80?logo=nodedotjs&logoColor=white&labelColor=111413)](https://nodejs.org)
+[![Dependências npm: 0](https://img.shields.io/badge/depend%C3%AAncias%20npm-0-b9ed80?labelColor=111413)](package.json)
+[![Motores](https://img.shields.io/badge/motores-Claude%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20opencode-b9ed80?labelColor=111413)](#o-que-ele-faz)
+
+**Português** · [English](README.en.md)
+
 **Uma bancada local para trabalhar com agentes de IA em vários projetos ao mesmo tempo, com uma memória que não se perde.**
 
 Você escreve a tarefa, ela entra numa fila, e um agente (Claude Code, Codex, Gemini ou opencode) trabalha na pasta
