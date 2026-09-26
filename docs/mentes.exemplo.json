@@ -14,6 +14,7 @@
   "design": "\\b(tela|layout|botao|css|mobile|ux)",
   "seguranca": "\\b(seguranc|permiss|senha|token|login|auditoria)"
  },
+ "nucleoDono": ["_global/respostas-curtas"],
  "temas": { "Loja": "loja|carrinho|cupom|checkout", "Pagamentos": "pix|pagamento|estorno" },
  "status": "proposta",
  "mapa": {

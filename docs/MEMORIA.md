@@ -66,7 +66,7 @@ Na **primeira rodada** de cada tarefa (ou quando outro motor assume), o board fa
 1. **Escolhe as mentes:** a do projeto (`mentePorProjeto`), mais as que o pedido cita (as **pistas** de cada mente).
 2. **Separa as memórias:** dentro dessas mentes, as mais ligadas ao pedido. A palavra rara vale mais que a comum, e
    onde ela aparece conta: título 3×, descrição 2×, texto 1×. Até 6.
-3. **O Dono vai sempre**, em lista curta.
+3. **O Dono vai sempre**: o núcleo fixo (`nucleoDono`), mais as regras dele ligadas ao pedido.
 4. **Registra** na tarefa: 📦 *romaneio · N memórias · ~X tokens · mentes*, cada memória clicável.
 
 Cerca de 1.900 tokens, com picking **sem IA** (custo zero). Na retomada, não reenvia: a sessão já tem.
@@ -92,6 +92,7 @@ Depois vêm as tarefas.
 
 - **O ganho ainda não está provado.** Na primeira medição (2 rodadas por lado; números no [README](../README.md)), a
   tendência foi de 6% menos custo e 12% menos tempo com o romaneio, mas a diferença ainda cabe no acaso.
-- **A escolha de "O Dono" é fraca:** as regras dele são gerais, e a busca por palavra não sabe quais pesam mais.
+- **O núcleo de "O Dono" é escolhido à mão:** as regras dele são gerais, e a busca por palavra não sabe quais pesam
+  mais; por isso `nucleoDono` (no `mentes.json`) lista as que vão sempre. Regra de um projeto só leva `soNoProjeto: true`.
 - **O romaneio só ajuda quando a memória tem o assunto.** Numa tarefa sobre algo nunca tratado, ele leva memória geral.
 - **Inventário** (juntar duplicadas, corrigir, descartar o vencido): ainda não existe.

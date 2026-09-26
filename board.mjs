@@ -487,6 +487,7 @@ function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
   const pags = [];
   for (const [chave, end] of Object.entries(m.mapa)) {
     const p = g._porChave.get(chave); if (!p || end.mente === "triagem") continue;
+    if (end.soNoProjeto && p.projeto !== task.project) continue; // regra de UM projeto (ex.: um "commit + push na main" de um projeto) não viaja
     if (ate && !(new Date(p.atualizada).getTime() < Date.parse(ate))) continue; // experimento: só o que já existia naquela data
     pags.push({ chave, mente: end.mente, tambem: end.tambem || [], p, tit: semAcentoServidor(p.titulo + " " + p.id), desc: semAcentoServidor(p.descricao),
       corpo: semAcentoServidor(p.titulo + " " + p.id + " " + p.descricao + " " + tiraCabecalhos(p.bruto).slice(0, 4000)) });
@@ -500,7 +501,10 @@ function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
     + (x.p.projeto === task.project ? 1.5 : 0);
   for (const x of pags) x.nota = nota(x);
   const porNota = (a, b) => b.nota - a.nota || String(b.p.atualizada).localeCompare(String(a.p.atualizada));
-  const dono = pags.filter((x) => x.mente === "dono").sort(porNota).slice(0, 10);
+  // O Dono: o NÚCLEO fixo vai sempre, na ordem que o dono escolheu (data/mentes.json "nucleoDono"); depois, até 4 regras
+  // dele que tenham a ver com o pedido. Antes era só por palavra, e às vezes ia "commit push test" no lugar de "veredito primeiro".
+  const nucleo = (m.nucleoDono || []).map((k) => pags.find((x) => x.chave === k)).filter(Boolean);
+  const dono = [...nucleo, ...pags.filter((x) => x.mente === "dono" && !nucleo.includes(x) && x.nota > 0).sort(porNota).slice(0, nucleo.length ? 4 : 10)];
   const daTarefa = pags.filter((x) => x.mente !== "dono" && x.nota > 0 && (todasMentes || mentes.has(x.mente) || x.tambem.some((t) => mentes.has(t)))).sort(porNota).slice(0, todasMentes ? 10 : 6);
   if (!dono.length && !daTarefa.length) return null;
   const nomeM = Object.fromEntries(mentesDef().map((x) => [x.id, x.icone + " " + x.nome]));
