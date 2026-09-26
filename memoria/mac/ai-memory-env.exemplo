@@ -1,3 +1,0 @@
-# ~/.ai-memory-env.sh — NO MAC, fora do git, chmod 600. Lido pelo board e pelo memoria-reserva.
-export AI_MEMORY_SERVER_URL="https://SEU-SERVIDOR.tailnet.ts.net:8443"
-export AI_MEMORY_AUTH_TOKEN="gere com: ai-memory generate-auth-token"
