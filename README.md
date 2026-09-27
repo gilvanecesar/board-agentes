@@ -94,7 +94,27 @@ As quatro entregas passaram na mesma verificação.
 **Leitura honesta:** a tendência favorece o romaneio (mais barato, mais rápido, menos texto gerado), mas com 2 rodadas
 por lado a diferença ainda cabe no acaso: só entre A1 e A2 houve 13 turnos de diferença. E esta foi o pior caso
 para ele, porque a memória não tinha nada sobre o assunto da tarefa. Em larga escala, 6% a 12% é muito dinheiro e
-muito tempo; por isso a próxima medição é com mais rodadas e numa tarefa cujo assunto a memória já conhece.
+muito tempo; por isso a segunda medição teve mais rodadas.
+
+### Segunda medição: o romaneio saiu mais caro
+
+Outra tarefa do board ("busca e detalhe na lista de pendentes"), 4 rodadas por lado, mesmo commit e mesmo modelo.
+O romaneio de B levou o núcleo de O Dono e memórias de engenharia e de telas.
+
+| | Custo | Turnos | Tempo | Tokens escritos |
+|---|---|---|---|---|
+| **Média A (sem)** | US$ 2,04 | 57,5 | 4min51 | 24.948 |
+| **Média B (com)** | US$ 2,50 (**+23%**) | 70,3 (**+22%**) | 6min32 (**+35%**) | 30.137 (**+21%**) |
+| Faixa de custo | A: 1,72 – 2,39 | B: 2,35 – 2,58 | | |
+
+**Qualidade: empate.** As 8 entregas passaram na verificação e num teste funcional no navegador. **Onde B gastou
+mais:** os 4 agentes com romaneio criaram uma rota nova no servidor; entre os sem romaneio, só 1 criou (os outros
+reaproveitaram o que já existia). Hipótese: regras gerais do dono ("executar o todo", "documentar tudo") empurram o
+agente a fazer mais. E a busca por palavra não levou a regra que mais importava para a tarefa, porque o pedido dizia
+a mesma coisa com outras palavras.
+
+**Conclusão das duas medições:** não há prova de que o romaneio economize. Por isso ele pode ser desligado
+(`BOARD_ROMANEIO=0`) e o próximo passo é a separação por sentido (embeddings), não por palavra.
 
 ---
 
