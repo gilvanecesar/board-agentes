@@ -136,6 +136,21 @@ empty in `mentes.json`). Since then the picking list also works **by meaning** (
 on a real memory, with 10 requests written in other words, it found the right memory in 8/10, against 5/10 by keyword
 alone. Details in [docs/MEMORIA.md](docs/MEMORIA.md).
 
+### Fourth measurement: the new picking list, WITH the owner's core rules — a tie
+
+Same task, 4 runs per side, now with the picking list by keyword **and meaning** and the project bonus fixed. The owner's
+core rules went along (in the 2nd measurement, with the old picking list and the core, it had cost 23% more).
+
+| | Cost | Turns | Time | Output tokens |
+|---|---|---|---|---|
+| **Average A (without)** | US$ 2.21 | 61.3 | 5m21s | 27,237 |
+| **Average D (new picking list, with core)** | US$ 2.19 (−1%) | 61.8 (+1%) | 5m01s (−6%) | 25,927 (−5%) |
+| Cost range | A: 1.84 – 2.56 | D: 1.93 – 2.45 | | |
+
+Quality: a tie (8 of 8 on the checks and on the functional test). Swapping 5 loose memories for 5 related to the request
+removed the extra cost — core included. With 4 runs per side, **a tie** is all that can be said: none of the four
+measurements showed savings, and the last one no longer shows extra cost.
+
 ---
 
 ## Installation
