@@ -36,12 +36,13 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   if (!alvo) { cp.kill("SIGKILL"); throw new Error(`o Chrome não abriu a porta de depuração (${cp.exitCode !== null ? "saiu com código " + cp.exitCode : "30 s sem resposta"}): ${errChrome.trim().slice(-600)}`); }
   const ws = new WebSocket(alvo.webSocketDebuggerUrl);
   await new Promise((ok, bad) => { ws.onopen = ok; ws.onerror = bad; });
-  let seq = 0; const pend = new Map(); const erros = []; const ouvintes = []; const abertos = new Map();
+  let seq = 0; const pend = new Map(); const erros = []; const ouvintes = []; const abertos = new Map(); const dialogos = [];
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     if (d.id && pend.has(d.id)) { const [ok, bad] = pend.get(d.id); pend.delete(d.id); d.error ? bad(new Error(d.error.message)) : ok(d.result); return; }
     if (d.method === "Runtime.exceptionThrown") erros.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") erros.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
+    if (d.method === "Page.javascriptDialogOpening") { dialogos.push(d.params.message); cmd("Page.handleJavaScriptDialog", { accept: true }).catch(() => {}); }
     if (d.method === "Network.requestWillBeSent") abertos.set(d.params.requestId, d.params.request.url);
     if (d.method === "Network.loadingFinished" || d.method === "Network.loadingFailed") abertos.delete(d.params.requestId);
     for (const f of ouvintes) f(d);
@@ -53,6 +54,10 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
     ws.send(JSON.stringify({ id, method, params }));
   });
   await cmd("Runtime.enable"); await cmd("Page.enable"); await cmd("Network.enable");
+  // Avaliação: TELA_COBERTURA=<pasta> grava quais funções dos scripts da tela rodaram (cobertura do V8 no Chrome).
+  const cobertura = process.env.TELA_COBERTURA; const coletas = [];
+  if (cobertura) { await cmd("Profiler.enable"); await cmd("Profiler.startPreciseCoverage", { callCount: true, detailed: false }); }
+  const coletar = async () => { if (cobertura) try { coletas.push(...(await cmd("Profiler.takePreciseCoverage")).result.filter((r) => /\/js\/[\w-]+\.js$/.test(r.url))); } catch { /* página trocando */ } };
   await cmd("Emulation.setTimezoneOverride", { timezoneId: "America/Sao_Paulo" });
   await cmd("Emulation.setLocaleOverride", { locale: "pt-BR" });
   await cmd("Emulation.setDeviceMetricsOverride", { width: largura, height: altura, deviceScaleFactor: 1, mobile: largura < 760 });
@@ -64,6 +69,7 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   };
   /** Navigates and waits until THAT page says it finished loading (asking the page, not trusting CDP events). */
   const carregar = async (url) => {
+    await coletar(); // antes de trocar de página, guarda o que a anterior executou
     try { await cmd("Page.navigate", { url }); }
     catch (e) {
       const srv = await Promise.race([fetch(url).then((r) => "o servidor responde " + r.status), esperar(3000).then(() => "o servidor NÃO responde")]).catch((x) => x.message);
@@ -89,6 +95,8 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   };
   const foto = async () => (await cmd("Page.captureScreenshot", { format: "png", captureBeyondViewport: false })).data;
   const tamanho = (l, a) => cmd("Emulation.setDeviceMetricsOverride", { width: l, height: a, deviceScaleFactor: 1, mobile: l < 760 });
-  const fechar = async () => { try { ws.close(); } catch { /* já fechou */ } cp.kill("SIGKILL"); await esperar(200); rmSync(perfil, { recursive: true, force: true }); };
-  return { cmd, avaliar, carregar, quieto, foto, tamanho, fechar, erros };
+  const fechar = async () => {
+    if (cobertura) { await coletar(); const { writeFileSync } = await import("node:fs"); writeFileSync(join(cobertura, `tela-${process.pid}-${Date.now()}.json`), JSON.stringify(coletas)); }
+    try { ws.close(); } catch { /* já fechou */ } cp.kill("SIGKILL"); await esperar(200); rmSync(perfil, { recursive: true, force: true }); };
+  return { cmd, avaliar, carregar, quieto, foto, tamanho, fechar, erros, dialogos };
 }

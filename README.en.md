@@ -132,7 +132,9 @@ rules in every task push the agent to do more. But A itself varied 11% between t
 
 **Conclusion of the three measurements:** there is no proof that the picking list saves anything, and the fixed core
 costs extra on small tasks. It can be turned off (`BOARD_ROMANEIO=0`) or used without the core (leave `nucleoDono`
-empty in `mentes.json`). The next step is picking by meaning (embeddings), not by keyword.
+empty in `mentes.json`). Since then the picking list also works **by meaning** (embeddings on a local ollama, `bge-m3`):
+on a real memory, with 10 requests written in other words, it found the right memory in 8/10, against 5/10 by keyword
+alone. Details in [docs/MEMORIA.md](docs/MEMORIA.md).
 
 ---
 
@@ -166,7 +168,7 @@ The board **opens and runs tasks** with just the first group. The others turn on
 
 | Tool | What it enables |
 |---|---|
-| `ollama` with `nomic-embed-text` | semantic task search. Without it, search is by keyword, and the UI says so |
+| `ollama` with `bge-m3` | task search and picking by meaning (`ollama pull bge-m3`). Without it, it goes by keyword, and the UI says so |
 
 ### 2. Where to put it
 
@@ -300,10 +302,11 @@ or gray (no reading). *(In this screenshot, the database names were changed.)*
 | `busca.mjs` | semantic task search (embeddings), falling back to keyword search |
 | `board.sh` | keeps the server running; a restart requested from the UI exits with code 75 and comes back in 1 s |
 | `memoria/` | the shared memory setup: server, backup, fallback and mirror |
-| `test/` | 98 tests (`npm test`, ~50 s, `node:test` only): the functions that decide on their own, the whole board in an isolated sandbox with fake `claude`, `codex`, `agy` and `opencode` speaking each one's real format (including the engine switch when quota runs out), and the UI in a headless Chrome — no real agent, no cost |
+| `test/` | 145 tests (`npm test`, ~50 s, `node:test` only): the functions that decide on their own, the whole board in an isolated sandbox with fake `claude`, `codex`, `agy`, `opencode`, `ai-memory`, `ssh`, `rclone` and `docker` speaking each one's real format, and the UI in a headless Chrome — no real agent, no cost. Measured coverage: 95% of the server's functions and 94% of the UI's |
 
-**The tests bite:** 27 defects planted on purpose (a verdict that approves with no verdict, production running in the
-owner's folder, the gate skipped, the agent's HTML running in the UI, Codex resuming with the wrong sandbox…) and all 27 failed. GitHub runs the suite on every PR.
+**The tests bite:** 61 defects planted on purpose (a verdict that approves with no verdict, production running in the
+owner's folder, the gate skipped, the agent's HTML running in the UI, memory deleted without confirmation, a manual backup
+counted as automatic…) and all 61 failed. GitHub runs the suite on every PR.
 **Refactor without changing anything:** `npm run fotografia` records the content and computed style of 32 screens and 19
 routes, with fixed data and a frozen clock; before and after a change, both must come out identical.
 

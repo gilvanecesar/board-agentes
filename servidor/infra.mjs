@@ -49,7 +49,7 @@ export function lerDocker(r, fora) {
 export const infraLida = { rapido: 0, drive: 0 };
 export let infraRodando = false;
 export const execP = (cmd, args, timeout, extra = {}) => new Promise((ok) => execFile(cmd, args,
-  { timeout, encoding: "utf8", maxBuffer: 4 << 20, env: { ...process.env, ...extra, PATH: `/opt/homebrew/bin:${process.env.HOME}/.local/bin:/usr/local/bin:${process.env.PATH || ""}` } },
+  { timeout, encoding: "utf8", maxBuffer: 4 << 20, env: { ...process.env, ...extra, PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ""}` } }, // ~/.local/bin primeiro, como no resto do board
   (e, out, err) => ok({ ok: !e, out: String(out || ""), err: String(err || "") })));
 // O endereço e o token da memória compartilhada (servidor no Saturno; na reserva, o do Mac).
 export function envMemoria() {

@@ -28,7 +28,8 @@ if (a.includes("--input-format")) {
     const msg = JSON.parse(l).message.content[0].text; const conta = path.join(H, "conta-conversa");
     const n = fs.existsSync(conta) ? Number(fs.readFileSync(conta, "utf8")) : 0; fs.writeFileSync(conta, String(n + 1));
     fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel: "conversa", n, args: a, cwd: process.cwd(), msg, t: Date.now() }) + "\\n");
-    const lista = cen.conversa || ["ok"]; const txt = lista[Math.min(n, lista.length - 1)];
+    const lista = (cen.conversa || ["ok"]).map((x) => typeof x === "string" ? { texto: x } : x); const item = lista[Math.min(n, lista.length - 1)]; const txt = item.texto;
+    if (item.dorme) { const fim = Date.now() + item.dorme; while (Date.now() < fim) { /* segura a resposta, como um agente pensando */ } }
     total += 0.02; out({ type: "system", subtype: "init", session_id: sid });
     out({ type: "assistant", session_id: sid, message: { content: [{ type: "text", text: txt }] } });
     out({ type: "result", session_id: sid, result: txt, total_cost_usd: total, num_turns: 1, duration_ms: 3 }); } });
@@ -37,14 +38,15 @@ if (a.includes("--input-format")) {
 }
 const prompt = arg("-p") || "";
 const papel = prompt === "/usage" ? "uso" : /^Revise a tarefa/.test(prompt) ? "revisor" : /^Teste a entrega/.test(prompt) ? "qa"
-  : /Classifique o PORTE/.test(prompt) ? "porte" : "agente";
+  : /Classifique o PORTE/.test(prompt) ? "porte" : /parecem REPETIDAS/.test(prompt) ? "juntar" : "agente";
 const cen = JSON.parse(fs.readFileSync(path.join(H, "cenario.json"), "utf8"));
 const conta = path.join(H, "conta-" + papel);
 const n = fs.existsSync(conta) ? Number(fs.readFileSync(conta, "utf8")) : 0;
 fs.writeFileSync(conta, String(n + 1));
 fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel, n, args: a, cwd: process.cwd(), t: Date.now() }) + "\\n");
-if (papel === "uso") { console.log(JSON.stringify({ type: "result", result: "", total_cost_usd: 0 })); process.exit(0); }
-if (papel === "porte") { console.log(JSON.stringify({ result: "leve", total_cost_usd: 0.001 })); process.exit(0); }
+if (papel === "uso") { console.log(JSON.stringify({ type: "result", result: cen.usoClaude || "", total_cost_usd: 0, num_turns: 0 })); process.exit(0); }
+if (papel === "porte") { console.log(JSON.stringify({ result: cen.porte || "leve", total_cost_usd: 0.001 })); process.exit(0); }
+if (papel === "juntar") { console.log(JSON.stringify({ result: cen.juntar || "NAO_JUNTAR: assuntos diferentes", total_cost_usd: 0.03 })); process.exit(0); }
 const lista = (cen[papel] || [{ texto: papel === "agente" ? "feito" : "APROVADO" }]).map((x) => typeof x === "string" ? { texto: x } : x);
 // An item with "quando" answers the prompt it matches; the others answer in call order.
 const porPedido = lista.find((x) => x.quando && new RegExp(x.quando).test(prompt));
@@ -74,14 +76,19 @@ const arg = (f) => { const i = a.indexOf(f); return i >= 0 ? a[i + 1] : undefine
 if (bin === "agy" && a[0] === "models") process.exit(0);
 if (bin === "opencode" && a[0] === "models") process.exit(0);
 const prompt = bin === "codex" ? a[a.length - 1] : bin === "agy" ? arg("-p") : a[a.length - 1];
-if (prompt === "/usage") process.exit(1);
+if (prompt === "/usage") {
+  const c = JSON.parse(fs.readFileSync(path.join(H, "cenario.json"), "utf8"));
+  if (bin === "agy" && c.usoGemini) { console.log(JSON.stringify({ conversation_id: "x", status: "SUCCESS", response: c.usoGemini, num_turns: 0, command: "/usage" })); process.exit(0); }
+  process.exit(1);
+}
 const papel = /^Revise a tarefa/.test(prompt.split("\\n\\n---\\n\\n").pop()) ? "revisor" : /^Teste a entrega/.test(prompt.split("\\n\\n---\\n\\n").pop()) ? "qa" : "agente";
 const resume = bin === "codex" ? (a[1] === "resume" ? a[a.length - 2] : undefined) : bin === "agy" ? arg("--conversation") : arg("-s");
 const cen = JSON.parse(fs.readFileSync(path.join(H, "cenario.json"), "utf8"));
 const conta = path.join(H, "conta-" + motor + "-" + papel);
 const n = fs.existsSync(conta) ? Number(fs.readFileSync(conta, "utf8")) : 0; fs.writeFileSync(conta, String(n + 1));
 fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel, motor, n, args: a, cwd: process.cwd(), t: Date.now() }) + "\\n");
-const lista = (cen[motor] || [{ texto: papel === "agente" ? "feito" : "APROVADO" }]).map((x) => typeof x === "string" ? { texto: x } : x);
+// cenario.codex = the agent's answers; cenario["codex:revisor"] / ["codex:qa"] = the reviewer's/QA's (default: APROVADO).
+const lista = (cen[motor + ":" + papel] || (papel === "agente" ? cen[motor] : null) || [{ texto: papel === "agente" ? "feito" : "APROVADO" }]).map((x) => typeof x === "string" ? { texto: x } : x);
 const p = lista[Math.min(n, lista.length - 1)];
 const sid = resume || ({ codex: "01a0c9ec-6650-7061-9c3e-", gemini: "ecd6b494-85b4-47ad-bfd2-", opencode: "ses_f27101d88ffe" }[motor] + process.pid);
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
@@ -117,8 +124,44 @@ if (bin === "codex") {
 process.exit(0);
 `;
 
+// The memory server: logs every call and does to the MIRROR what the real one would do to the memory (delete/write a page),
+// so the board sees the result the next time it reads. "status" and anything else: not here.
+const FALSO_AI_MEMORY = `#!/usr/bin/env node
+const fs = require("fs"), path = require("path");
+const a = process.argv.slice(2); const arg = (f) => { const i = a.indexOf(f); return i >= 0 ? a[i + 1] : undefined; };
+fs.appendFileSync(path.join(process.env.HOME, "ai-memory.log"), JSON.stringify(a) + "\\n");
+const arq = () => path.join(process.env.BOARD_ESPELHO_MEMORIA, arg("--project"), arg("--path"));
+if (a[0] === "delete-page") { if (!fs.existsSync(arq())) { console.error("page not found"); process.exit(1); } fs.rmSync(arq()); process.exit(0); }
+if (a[0] === "status" && fs.existsSync(path.join(process.env.HOME, "ai-memory-status.txt"))) { process.stdout.write(fs.readFileSync(path.join(process.env.HOME, "ai-memory-status.txt"), "utf8")); process.exit(0); }
+if (a[0] === "write-page") { fs.mkdirSync(path.dirname(arq()), { recursive: true }); fs.writeFileSync(arq(), "---\\nname: x\\n---\\n" + arg("--body")); process.exit(0); }
+process.exit(1);
+`;
+
+// The server (ssh) and the Drive (rclone) answer with what the test left in $HOME (ssh-saida.txt, rclone.json); without it,
+// "not here" — exactly like the server being down.
+const FALSO_SSH = `#!/bin/sh
+[ -f "$HOME/ssh-saida.txt" ] && { cat "$HOME/ssh-saida.txt"; exit 0; }
+echo "ssh: connect to host: Connection refused" >&2; exit 255
+`;
+const FALSO_RCLONE = `#!/usr/bin/env node
+const fs = require("fs"), path = require("path"); const a = process.argv.slice(2);
+const f = path.join(process.env.HOME, "rclone.json"); if (!fs.existsSync(f)) { console.error("didn't find section in config file"); process.exit(1); }
+const drive = JSON.parse(fs.readFileSync(f, "utf8")); const pasta = (a.find((x) => x.startsWith("gdrive_backup:")) || "").slice(14);
+const lista = drive[pasta]; if (!lista) { console.error("directory not found"); process.exit(3); }
+if (a[0] === "size") console.log(JSON.stringify({ count: lista.length, bytes: lista.reduce((s, x) => s + x.Size, 0) }));
+else console.log(JSON.stringify(lista.map((x) => ({ IsDir: false, ...x }))));
+`;
+
 // Everything else that could reach the outside world answers "not here".
-const MUDOS = ["ssh", "rclone", "docker", "ai-memory", "tmux", "osascript", "open", "ollama"];
+const MUDOS = ["tmux", "osascript", "open", "ollama"];
+// docker: the containers the test left in $HOME (docker-ps.txt / docker-stats.txt); without them, "daemon not running".
+const FALSO_DOCKER = `#!/bin/sh
+case "$1" in
+  ps) [ -f "$HOME/docker-ps.txt" ] && { cat "$HOME/docker-ps.txt"; exit 0; } ;;
+  stats) [ -f "$HOME/docker-stats.txt" ] && { cat "$HOME/docker-stats.txt"; exit 0; } ;;
+esac
+echo "Cannot connect to the Docker daemon. Is the docker daemon running?" >&2; exit 1
+`;
 const FALSO_GH = `#!/bin/sh
 echo "gh $*" >> "$HOME/gh.log"
 case "$1 $2" in
@@ -165,6 +208,10 @@ export function criarCaixa() {
   escreve("claude", FALSO_CLAUDE);
   escreve("gh", FALSO_GH);
   for (const m of ["codex", "agy", "opencode"]) escreve(m, FALSO_MOTOR);
+  escreve("ai-memory", FALSO_AI_MEMORY);
+  escreve("ssh", FALSO_SSH);
+  escreve("rclone", FALSO_RCLONE);
+  escreve("docker", FALSO_DOCKER);
   for (const m of MUDOS) escreve(m, "#!/bin/sh\nexit 1\n");
   const caixa = { raiz, board, home, dev, bin, cenario: (c) => writeFileSync(join(home, "cenario.json"), JSON.stringify(c)) };
   caixa.cenario({});
@@ -179,6 +226,7 @@ export function envDaCaixa(caixa, extra = {}) {
     BOARD_PROJETOS: caixa.dev, BOARD_SEM_ROTINAS: "1", BOARD_CLASSIFICAR: "0", BOARD_ROMANEIO: "0",
     BOARD_BUSCA_PROVEDOR: "lexico", BOARD_LOG_CRU: "0", BOARD_RETENTATIVAS: "0", BOARD_PRODUCAO: "",
     BOARD_ESPELHO_MEMORIA: join(caixa.raiz, "memoria"),
+    ...(process.env.NODE_V8_COVERAGE ? { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE } : {}), // cobertura dos boards da caixa (avaliação)
     // Some readings call the REAL binaries (/opt/homebrew/bin comes first in their PATH): point them at nothing,
     // so the sandbox never reads the owner's containers, Drive or memory server.
     DOCKER_HOST: "unix:///nao-existe/docker.sock", RCLONE_CONFIG: join(caixa.raiz, "sem-rclone.conf"),
@@ -225,3 +273,22 @@ export const chamadas = (caixa) => existsSync(join(caixa.home, "chamadas.jsonl")
   : [];
 
 export const limparCaixa = (caixa) => { try { rmSync(caixa.raiz, { recursive: true, force: true }); } catch { /* temp */ } };
+
+/**
+ * A fake embeddings server (ollama's /api/embed): each text becomes a vector with one dimension per CONCEPT (regex), so
+ * "same meaning, other words" is decided by the test, not by a real model. Counts the texts it embedded.
+ */
+export async function servidorDeSentido(conceitos) {
+  const { createServer: criar } = await import("node:http");
+  const estado = { textos: 0, pedidos: 0 };
+  const vetor = (t) => { const s = String(t).toLowerCase(); return [0.05, ...conceitos.map((rx) => (s.match(new RegExp(rx, "g")) || []).length)]; };
+  const srv = criar((req, res) => {
+    let corpo = ""; req.on("data", (d) => (corpo += d)); req.on("end", () => {
+      const d = JSON.parse(corpo || "{}"); const lista = [].concat(d.input || []);
+      estado.pedidos++; estado.textos += lista.length;
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ model: d.model, embeddings: lista.map(vetor) }));
+    });
+  });
+  await new Promise((ok) => srv.listen(0, "127.0.0.1", ok));
+  return { url: `http://127.0.0.1:${srv.address().port}`, estado, fechar: () => new Promise((ok) => srv.close(ok)) };
+}

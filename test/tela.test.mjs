@@ -131,3 +131,42 @@ test("📎 anexar: imagem entra; tipo não aceito AVISA (nunca recusa calado)", 
   await nav.cmd("DOM.setFileInputFiles", { nodeId: n2, files: [docx] });
   await ate(`document.body.innerText.includes("não aceito contrato.docx")`);
 });
+
+test("curva de giro: o servidor conta por onde cada memória passou", { skip: pular }, async () => {
+  const g = (await b.api("GET", "/api/memoria/grafo")).json;
+  assert.ok(g.giroDesde, "desde quando há romaneio");
+  const no = (k) => g.nos.find((n) => n.chave === k);
+  assert.equal(no("_global/respostas-curtas").giro.saidas, 4);
+  assert.equal(no("_global/respostas-curtas").giro.conserto, 1, "a #9 passou depois de conserto");
+  assert.equal(no("_global/respostas-curtas").giro.primeira, 3);
+  assert.deepEqual(no("api-pagamentos/pix-webhook-idempotente").giro.tarefas.map((t) => t.id), [12]);
+  assert.equal(no("app-entregas/rota-recalcula").giro, undefined, "memória que nunca saiu não tem giro");
+});
+
+test("galpão por GIRO: o que mais sai fica no nível 1, a legenda muda e a ficha mostra as tarefas (sem prometer que ajudou)", { skip: pular }, async () => {
+  await nav.tamanho(1440, 1000);
+  await abrir("", { tab: "memoria", memoriaModo: "galpao", galpaoNivel: "giro", galpaoPP: "tipo" });
+  await ate(`!!document.querySelector('[data-nivel="giro"].on')`);
+  assert.match(await texto(), /nunca saiu/);
+  assert.match(await texto(), /nunca foram a uma tarefa/);
+  // idade e giro discordam: "dinheiro em centavos" saiu 1 vez e tem 90 dias; "estorno" nunca saiu e tem 42 dias
+  const ordem = (k) => nav.avaliar(`(() => { const e = document.querySelector('.gp-p[data-chave="${k}"]').dataset.end.match(/-N(\\d+)-(\\d+)$/); return Number(e[1]) * 100 + Number(e[2]); })()`);
+  assert.ok(await ordem("api-pagamentos/dinheiro-em-centavos") < await ordem("api-pagamentos/estorno-mesmo-meio"), "por giro, a que saiu vem antes (mais perto da doca)");
+  const primeiro = await nav.avaliar(`document.querySelector('.gp-p[data-chave="_global/respostas-curtas"]').dataset.end`);
+  assert.match(primeiro, /-N1-01$/, "respostas-curtas (4 saídas) está na frente da doca: " + primeiro);
+  await nav.avaliar(`document.querySelector('[data-nivel="idade"]').click()`);
+  await ate(`!!document.querySelector('[data-nivel="idade"].on')`);
+  assert.ok(await ordem("api-pagamentos/dinheiro-em-centavos") > await ordem("api-pagamentos/estorno-mesmo-meio"), "por idade, a mais nova vem antes");
+  await nav.avaliar(`document.querySelector('[data-nivel="giro"]').click()`);
+  await ate(`!!document.querySelector('[data-nivel="giro"].on')`);
+  await nav.avaliar(`document.querySelector('.gp-p[data-chave="_global/respostas-curtas"]').click()`);
+  await ate(`document.querySelector("#grafoPagina") && /saiu em 4 tarefas/i.test(document.querySelector("#grafoPagina").innerText)`); // o título sai em maiúsculas (CSS)
+  const ficha = await nav.avaliar(`document.querySelector("#grafoPagina").innerText`);
+  assert.match(ficha, /não prova que ela ajudou/);
+  assert.match(ficha, /3 passaram de primeira · 1 passou depois de conserto/, "com o plural certo");
+  assert.match(ficha, /#12 .*passou de primeira/);
+  assert.match(ficha, /#9 .*passou depois de conserto/);
+  await nav.avaliar(`[...document.querySelectorAll("#grafoPagina .giro button")].find((x) => x.textContent.startsWith("#12")).click()`);
+  await ate(`location.hash === "#/t/12"`);
+  assert.deepEqual(nav.erros, []);
+});
