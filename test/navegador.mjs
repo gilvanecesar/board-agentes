@@ -23,15 +23,17 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   const cp = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${porta}`, `--user-data-dir=${perfil}`, "--no-first-run",
     "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1", "--lang=pt-BR",
     "--font-render-hinting=none", "--disable-features=BackForwardCache", // o cache de "voltar" guardava as páginas com a conexão de eventos aberta: com 6 presas, o Chrome não navega mais
-     `--window-size=${largura},${altura}`, ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
+     `--window-size=${largura},${altura}`, ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []), "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  let errChrome = ""; cp.stderr.on("data", (d) => { errChrome = (errChrome + d).slice(-2000); });
   const mata = () => { try { cp.kill("SIGKILL"); } catch { /* já saiu */ } };
   process.on("exit", mata); // quem nos derruba não deixa Chrome órfão para trás
   let alvo;
-  for (let i = 0; i < 100 && !alvo; i++) {
+  // Até 30 s: numa máquina de CI fria o Chrome já levou mais de 10 s para abrir (27/09, o teste desistia antes).
+  for (let i = 0; i < 300 && !alvo && cp.exitCode === null; i++) {
     await esperar(100);
     try { alvo = (await (await fetch(`http://127.0.0.1:${porta}/json`)).json()).find((t) => t.type === "page"); } catch { /* ainda subindo */ }
   }
-  if (!alvo) { cp.kill("SIGKILL"); throw new Error("o Chrome não abriu a porta de depuração"); }
+  if (!alvo) { cp.kill("SIGKILL"); throw new Error(`o Chrome não abriu a porta de depuração (${cp.exitCode !== null ? "saiu com código " + cp.exitCode : "30 s sem resposta"}): ${errChrome.trim().slice(-600)}`); }
   const ws = new WebSocket(alvo.webSocketDebuggerUrl);
   await new Promise((ok, bad) => { ws.onopen = ok; ws.onerror = bad; });
   let seq = 0; const pend = new Map(); const erros = []; const ouvintes = []; const abertos = new Map();
