@@ -7,6 +7,7 @@
   "scripts": {
     "start": "./board.sh",
     "check": "node --check board.mjs && node --check board-cli.mjs && node --check busca.mjs",
+    "test": "node --test --test-timeout=90000 test/*.test.mjs",
     "once": "node board.mjs"
   },
   "bin": {

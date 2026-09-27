@@ -3,6 +3,7 @@
 [![MIT License](https://img.shields.io/github/license/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413&label=release)](https://github.com/gilvanecesar/board-agentes/releases)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-b9ed80?logo=docker&logoColor=white&labelColor=111413)](https://github.com/gilvanecesar/board-agentes/pkgs/container/board-agentes)
+[![Tests](https://img.shields.io/github/actions/workflow/status/gilvanecesar/board-agentes/testes.yml?branch=main&label=tests&color=b9ed80&labelColor=111413)](https://github.com/gilvanecesar/board-agentes/actions/workflows/testes.yml)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-b9ed80?logo=nodedotjs&logoColor=white&labelColor=111413)](https://nodejs.org)
 [![npm dependencies: 0](https://img.shields.io/badge/npm%20dependencies-0-b9ed80?labelColor=111413)](package.json)
 [![Engines](https://img.shields.io/badge/engines-Claude%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20opencode-b9ed80?labelColor=111413)](#what-it-does)
@@ -298,6 +299,10 @@ or gray (no reading). *(In this screenshot, the database names were changed.)*
 | `busca.mjs` | semantic task search (embeddings), falling back to keyword search |
 | `board.sh` | keeps the server running; a restart requested from the UI exits with code 75 and comes back in 1 s |
 | `memoria/` | the shared memory setup: server, backup, fallback and mirror |
+| `test/` | 70 tests (`npm test`, ~40 s, `node:test` only): the functions that decide on their own, and the whole board in an isolated sandbox with a fake `claude` — no real agent, no cost |
+
+**The tests bite:** 9 defects planted on purpose (a verdict that approves with no verdict, production running in the
+owner's folder, the gate skipped…) and all 9 failed. GitHub runs the suite on every PR.
 
 License: [MIT](LICENSE).
 

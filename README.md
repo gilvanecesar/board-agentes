@@ -3,6 +3,7 @@
 [![Licença MIT](https://img.shields.io/github/license/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/gilvanecesar/board-agentes?color=b9ed80&labelColor=111413&label=release)](https://github.com/gilvanecesar/board-agentes/releases)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-b9ed80?logo=docker&logoColor=white&labelColor=111413)](https://github.com/gilvanecesar/board-agentes/pkgs/container/board-agentes)
+[![Testes](https://img.shields.io/github/actions/workflow/status/gilvanecesar/board-agentes/testes.yml?branch=main&label=testes&color=b9ed80&labelColor=111413)](https://github.com/gilvanecesar/board-agentes/actions/workflows/testes.yml)
 [![Node 20+](https://img.shields.io/badge/node-20%2B-b9ed80?logo=nodedotjs&logoColor=white&labelColor=111413)](https://nodejs.org)
 [![Dependências npm: 0](https://img.shields.io/badge/depend%C3%AAncias%20npm-0-b9ed80?labelColor=111413)](package.json)
 [![Motores](https://img.shields.io/badge/motores-Claude%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20opencode-b9ed80?labelColor=111413)](#o-que-ele-faz)
@@ -296,6 +297,10 @@ Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram
 | `busca.mjs` | busca de tarefas por sentido (embeddings), com recuo para busca por palavra |
 | `board.sh` | mantém o servidor no ar; o reinício pedido pela tela sai com código 75 e volta em 1 s |
 | `memoria/` | a montagem da memória compartilhada: servidor, backup, reserva e espelho |
+| `test/` | 70 testes (`npm test`, ~40 s, só `node:test`): as funções que decidem sozinhas e o board inteiro numa caixa isolada, com um `claude` falso — sem agente de verdade, sem custo |
+
+**Os testes mordem:** 9 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
+do dono, portão ignorado…) e os 9 reprovaram. O GitHub roda a bateria em todo PR.
 
 Licença: [MIT](LICENSE).
 
