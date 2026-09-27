@@ -300,10 +300,10 @@ or gray (no reading). *(In this screenshot, the database names were changed.)*
 | `busca.mjs` | semantic task search (embeddings), falling back to keyword search |
 | `board.sh` | keeps the server running; a restart requested from the UI exits with code 75 and comes back in 1 s |
 | `memoria/` | the shared memory setup: server, backup, fallback and mirror |
-| `test/` | 90 tests (`npm test`, ~50 s, `node:test` only): the functions that decide on their own, the whole board in an isolated sandbox with a fake `claude`, and the UI in a headless Chrome — no real agent, no cost |
+| `test/` | 98 tests (`npm test`, ~50 s, `node:test` only): the functions that decide on their own, the whole board in an isolated sandbox with fake `claude`, `codex`, `agy` and `opencode` speaking each one's real format (including the engine switch when quota runs out), and the UI in a headless Chrome — no real agent, no cost |
 
-**The tests bite:** 17 defects planted on purpose (a verdict that approves with no verdict, production running in the
-owner's folder, the gate skipped, the agent's HTML running in the UI…) and all 17 failed. GitHub runs the suite on every PR.
+**The tests bite:** 27 defects planted on purpose (a verdict that approves with no verdict, production running in the
+owner's folder, the gate skipped, the agent's HTML running in the UI, Codex resuming with the wrong sandbox…) and all 27 failed. GitHub runs the suite on every PR.
 **Refactor without changing anything:** `npm run fotografia` records the content and computed style of 32 screens and 19
 routes, with fixed data and a frozen clock; before and after a change, both must come out identical.
 

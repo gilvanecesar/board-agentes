@@ -249,7 +249,9 @@ export const MOTORES = {
         out.cost += p.cost || 0;
         out.turns += 1;
       } else if (ev.type === "error" || p.type === "error") {
-        const m = ev.message || p.message || JSON.stringify(ev).slice(0, 200);
+        // O `run --format json` manda {type:"error", error:{name, data:{message}}}: a mensagem mora em error.data.message.
+        // Antes ia o JSON cru, cortado em 200 caracteres — a tela mostrava o envelope e a cota podia ficar fora do corte.
+        const m = ev.error?.data?.message || ev.error?.message || ev.error?.name || ev.message || p.message || JSON.stringify(ev).slice(0, 200);
         ctx.erro(cut(m, 300), /usage limit|rate limit|quota|credit/i.test(m));
       }
     },

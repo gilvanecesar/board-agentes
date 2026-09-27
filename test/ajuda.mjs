@@ -64,8 +64,61 @@ const fim = () => {
 passo.dorme ? setTimeout(fim, passo.dorme) : fim();
 `;
 
+// The other engines, speaking the REAL formats (taken from the board's raw logs of real Codex and Gemini runs, and from
+// the opencode binary itself for `run --format json`). Same scenario file: cenario.codex / cenario.gemini / cenario.opencode.
+const FALSO_MOTOR = `#!/usr/bin/env node
+const fs = require("fs"), path = require("path");
+const H = process.env.HOME, a = process.argv.slice(2), bin = path.basename(process.argv[1]);
+const motor = { codex: "codex", agy: "gemini", opencode: "opencode" }[bin];
+const arg = (f) => { const i = a.indexOf(f); return i >= 0 ? a[i + 1] : undefined; };
+if (bin === "agy" && a[0] === "models") process.exit(0);
+if (bin === "opencode" && a[0] === "models") process.exit(0);
+const prompt = bin === "codex" ? a[a.length - 1] : bin === "agy" ? arg("-p") : a[a.length - 1];
+if (prompt === "/usage") process.exit(1);
+const papel = /^Revise a tarefa/.test(prompt.split("\\n\\n---\\n\\n").pop()) ? "revisor" : /^Teste a entrega/.test(prompt.split("\\n\\n---\\n\\n").pop()) ? "qa" : "agente";
+const resume = bin === "codex" ? (a[1] === "resume" ? a[a.length - 2] : undefined) : bin === "agy" ? arg("--conversation") : arg("-s");
+const cen = JSON.parse(fs.readFileSync(path.join(H, "cenario.json"), "utf8"));
+const conta = path.join(H, "conta-" + motor + "-" + papel);
+const n = fs.existsSync(conta) ? Number(fs.readFileSync(conta, "utf8")) : 0; fs.writeFileSync(conta, String(n + 1));
+fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel, motor, n, args: a, cwd: process.cwd(), t: Date.now() }) + "\\n");
+const lista = (cen[motor] || [{ texto: papel === "agente" ? "feito" : "APROVADO" }]).map((x) => typeof x === "string" ? { texto: x } : x);
+const p = lista[Math.min(n, lista.length - 1)];
+const sid = resume || ({ codex: "01a0c9ec-6650-7061-9c3e-", gemini: "ecd6b494-85b4-47ad-bfd2-", opencode: "ses_f27101d88ffe" }[motor] + process.pid);
+const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+if (p.escreve) fs.writeFileSync(path.join(process.cwd(), p.escreve.arquivo), p.escreve.conteudo ?? "x\\n");
+const arq = p.escreve ? path.join(process.cwd(), p.escreve.arquivo) : null;
+if (bin === "codex") {
+  out({ type: "thread.started", thread_id: sid });
+  out({ type: "turn.started" });
+  out({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "/bin/zsh -lc 'cat CLAUDE.md'", aggregated_output: "# demo", exit_code: 0, status: "completed" } });
+  if (arq) out({ type: "item.completed", item: { id: "item_1", type: "file_change", changes: [{ path: arq, kind: "add" }], status: "completed" } });
+  if (p.erro) { out({ type: "error", message: p.erro }); out({ type: "turn.failed", error: { message: p.erro } }); process.exit(1); }
+  out({ type: "item.completed", item: { id: "item_2", type: "agent_message", text: p.texto } });
+  out({ type: "turn.completed", usage: { input_tokens: 54710, cached_input_tokens: 34176, output_tokens: 269, reasoning_output_tokens: 19 } });
+} else if (bin === "agy") {
+  out({ event: "init", conversation_id: sid, init: { cwd: process.cwd(), tools: ["view_file", "replace_file_content"] } });
+  out({ event: "step_update", step_update: { conversation_id: sid, step_index: 0, state: "DONE", step_type: "user_input" } });
+  out({ event: "step_update", step_update: { conversation_id: sid, step_index: 1, state: "DONE", step_type: "tool", tool_name: "view_file", tool_info: { name: "view_file", parameters: { AbsolutePath: path.join(process.cwd(), "CLAUDE.md") }, output: "1 lines" } } });
+  if (arq) out({ event: "step_update", step_update: { conversation_id: sid, step_index: 2, state: "DONE", step_type: "tool", tool_name: "replace_file_content", tool_info: { name: "replace_file_content", parameters: { TargetFile: arq } } } });
+  for (const pedaco of (p.texto || "").match(/.{1,7}/gs) || []) out({ event: "step_update", step_update: { conversation_id: sid, step_index: 3, state: "ACTIVE", step_type: "agent_response", text_delta: pedaco } });
+  out({ event: "step_update", step_update: { conversation_id: sid, step_index: 3, state: "DONE", step_type: "agent_response", usage: { input_tokens: 12740, output_tokens: 502, total_tokens: 13242 } } });
+  out({ event: "result", result: p.erro
+    ? { conversation_id: sid, status: "ERROR", response: "", error: p.erro, num_turns: 4, usage: { input_tokens: 1203220, output_tokens: 65576, total_tokens: 1268796 } }
+    : { conversation_id: sid, status: "SUCCESS", response: "", num_turns: 1, usage: { input_tokens: 42753, output_tokens: 666, total_tokens: 43419 } } });
+} else {
+  const env = (type, extra) => out({ type, timestamp: Date.now(), sessionID: sid, ...extra });
+  env("step_start", { part: { type: "step-start", sessionID: sid } });
+  env("tool_use", { part: { type: "tool", tool: "read", callID: "call-1", sessionID: sid, state: { status: "completed", input: { filePath: path.join(process.cwd(), "CLAUDE.md") }, output: "# demo", title: "CLAUDE.md" } } });
+  if (arq) env("tool_use", { part: { type: "tool", tool: "write", callID: "call-2", sessionID: sid, state: { status: "completed", input: { filePath: arq }, title: p.escreve.arquivo } } });
+  if (p.erro) { env("error", { error: { name: "APIError", data: { message: p.erro, statusCode: 429, isRetryable: false } } }); process.exit(1); }
+  env("text", { part: { type: "text", text: p.texto, sessionID: sid, time: { start: 1, end: 2 } } });
+  env("step_finish", { part: { type: "step-finish", reason: "stop", sessionID: sid, tokens: { total: 30257, input: 292, output: 13, reasoning: 0, cache: { write: 0, read: 29952 } }, cost: 0.0123 } });
+}
+process.exit(0);
+`;
+
 // Everything else that could reach the outside world answers "not here".
-const MUDOS = ["codex", "agy", "opencode", "ssh", "rclone", "docker", "ai-memory", "tmux", "osascript", "open", "ollama"];
+const MUDOS = ["ssh", "rclone", "docker", "ai-memory", "tmux", "osascript", "open", "ollama"];
 const FALSO_GH = `#!/bin/sh
 echo "gh $*" >> "$HOME/gh.log"
 case "$1 $2" in
@@ -111,6 +164,7 @@ export function criarCaixa() {
   const escreve = (nome, txt) => { writeFileSync(join(bin, nome), txt); chmodSync(join(bin, nome), 0o755); };
   escreve("claude", FALSO_CLAUDE);
   escreve("gh", FALSO_GH);
+  for (const m of ["codex", "agy", "opencode"]) escreve(m, FALSO_MOTOR);
   for (const m of MUDOS) escreve(m, "#!/bin/sh\nexit 1\n");
   const caixa = { raiz, board, home, dev, bin, cenario: (c) => writeFileSync(join(home, "cenario.json"), JSON.stringify(c)) };
   caixa.cenario({});
