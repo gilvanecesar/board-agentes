@@ -191,6 +191,8 @@ export function classifyError(motivo, task) {
   const m = String(motivo || "").trim();
   // A marca vem do MOTOR (ele sabe que foi cota); o texto é só reforço, e reconhece os três CLIs.
   if (task?.erroCota) return "cota";
+  // Barrado por permissão: tentar de novo dá no mesmo muro. Nunca repete sozinho (ver runTask).
+  if (/bloqueado por permissão/.test(m) || task?.negadas?.length) return "manual";
   if (/cc_cli_limit_message/.test(m) || /^you'?ve hit your [\w ]*limit\b/i.test(m)) return "cota";
   if (/usage limit|rate limit|quota (exceeded|reached)|out of credits|limite de uso/i.test(m)) return "cota";
   if (/mescl|publica|deploy|URL do PR|URL de PR/i.test(m)) return "manual";
@@ -216,7 +218,10 @@ export function scheduleRetry(task, motivo) {
   const hora = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   if (tipo === "manual") {
     task.retentativa = null;
-    logEvent(task.id, { t: "retentativa", estado: "manual", texto: "erro em mesclar/publicar não é repetido sozinho — confira e decida" });
+    const bloqueio = /bloqueado por permissão/.test(String(motivo || "")) || task.negadas?.length;
+    logEvent(task.id, { t: "retentativa", estado: "manual", texto: bloqueio
+      ? "barrado por permissão: tentar de novo dá no mesmo muro — não repito sozinho; libere o acesso ou mude a tarefa"
+      : "erro em mesclar/publicar não é repetido sozinho — confira e decida" });
     return;
   }
   if (tipo === "cota") {
@@ -297,6 +302,13 @@ export async function runTask(task) {
   task.result = r.result;
 
   const mexeu = r.escreveu || mexeuEmArquivo(project.dir, marca);
+  // BLOQUEIO DE PERMISSÃO não é defeito de código: repetir não resolve. Em 27/09 (arquivos sob ~/.claude, "sensitive file")
+  // o board fez conserto + 2 retentativas = 6 rodadas numa tarefa impossível, US$ 3–4,50 cada. Barrado e nada mudou → para e chama o dono.
+  if (r.negadas?.length) {
+    task.negadas = [...new Set([...(task.negadas || []), ...r.negadas])];
+    logEvent(task.id, { t: "solto", texto: `⚠ a permissão barrou: ${r.negadas.join(" · ")}` });
+    if (!mexeu) return finaliza(task, "erro", `bloqueado por permissão (${r.negadas.join(" · ")}) — precisa de você: libere o acesso ou mude a tarefa`);
+  }
   // Resposta vazia E nada mexido = o motor não trabalhou (permissão negada, saída vazia…).
   // Marcar isso como "executada" é o pior dos mundos: parece pronto e não é (#127 no Gemini).
   if (!String(task.result || "").trim() && !mexeu) {

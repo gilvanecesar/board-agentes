@@ -60,7 +60,8 @@ const fim = () => {
     out({ type: "assistant", session_id: sid, message: { content: [{ type: "tool_use", name: "Write", input: { file_path: passo.escreve.arquivo } }] } }); }
   if (passo.apaga) fs.rmSync(path.join(process.cwd(), passo.apaga), { force: true });
   out({ type: "assistant", session_id: sid, message: { content: [{ type: "text", text: passo.texto || "" }] } });
-  out({ type: "result", session_id: sid, is_error: !!passo.erro, result: passo.texto || "", total_cost_usd: passo.custo ?? 0.01, num_turns: 1, duration_ms: 5 });
+  out({ type: "result", session_id: sid, is_error: !!passo.erro, result: passo.texto || "", total_cost_usd: passo.custo ?? 0.01, num_turns: 1, duration_ms: 5,
+    ...(passo.negado ? { permission_denials: [{ tool_name: "Edit", tool_use_id: "x", tool_input: { file_path: path.join(process.cwd(), passo.negado) } }] } : {}) });
   process.exit(passo.codigo || 0);
 };
 passo.dorme ? setTimeout(fim, passo.dorme) : fim();

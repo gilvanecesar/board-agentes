@@ -149,6 +149,33 @@ Qualidade: empate (8 de 8 na verificação e no teste funcional). Trocar 5 memó
 sobrecusto — com o núcleo e tudo. Com 4 rodadas por lado, **empate** é o máximo que dá para dizer: nenhuma das quatro
 medições mostrou economia, e a última deixou de mostrar custo a mais.
 
+## Board × IA sozinha (27/09/2026)
+
+A mesma pessoa pedindo as mesmas coisas: de um lado o Claude Code sozinho na pasta; do outro, o board (regras da casa,
+romaneio, portão, revisor, QA). Mesmo modelo (Opus 5.5), 3 rodadas por tarefa, e um **gabarito escondido** que nenhum dos
+dois via, com nota por item (0 a 5).
+
+**Rodada 1 — tarefas pequenas, com as regras ESCRITAS no CLAUDE.md:** empate, 12/12 dos dois lados. O board custou 4,4× e
+só se diferenciou em 1 caso (o revisor exigiu que o teste do fuso pegasse o bug de verdade).
+
+**Rodada 2 — tarefas maiores, com as regras NÃO escritas** (cancelamento com estorno, importação de CSV com preço
+brasileiro, comissão do mês, limite de tentativas no login):
+
+| | IA sozinha | Board |
+|---|---|---|
+| Nota no gabarito escondido | 54/60 | **59/60** |
+| Entregas perfeitas | 9/12 | **11/12** |
+| Chegou "pronto" faltando algo | 3 | **1** |
+| Custo médio por tarefa | **US$ 0,25** | US$ 1,06 (4,2×) |
+| Tempo médio | **44 s** | 3min41 (5×) |
+
+A diferença toda veio do **login**: a IA sozinha, nas 3 rodadas, contou os erros também por IP e não zerava o IP no acerto —
+num IP compartilhado (escritório, 4G), quem erra a senha bloqueia todo mundo por 15 minutos. O board acertou 2 de 3 (o romaneio
+levou a lição "rate limit pelo IP real" da memória), e o **QA reprovou** numa rodada um defeito que o gabarito nem media:
+errando na virada da janela, dava para chutar 6 senhas em 1 segundo sem bloqueio. **Leitura:** em tarefa pequena e bem
+especificada, o modelo sozinho basta; o board se paga onde a regra não está escrita e o erro custa caro (segurança, dinheiro,
+produção) — e cobra por isso ~4× em custo e ~5× em tempo.
+
 ---
 
 ## Instalação
