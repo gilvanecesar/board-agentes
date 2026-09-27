@@ -115,8 +115,23 @@ what already existed). Hypothesis: the owner's general rules ("do the whole thin
 agent to do more. And keyword picking missed the rule that mattered most for the task, because the request said the
 same thing in other words.
 
-**Conclusion of both measurements:** there is no proof that the picking list saves anything. That is why it can be
-turned off (`BOARD_ROMANEIO=0`), and the next step is picking by meaning (embeddings), not by keyword.
+### Third measurement: without the owner's general rules, a tie
+
+Same task, 4 runs per side, but the picking list (C) carried only the task's memories, without the owner's core rules.
+
+| | Cost | Turns | Time | Output tokens |
+|---|---|---|---|---|
+| **Average A (without)** | US$ 2.26 | 66 | 5m57s | 27,874 |
+| **Average C (task memories only)** | US$ 2.23 (−2%) | 62 (−6%) | 6m29s (+9%) | 28,147 (+1%) |
+| Cost range | A: 2.00 – 2.44 | C: 1.87 – 2.44 | | |
+
+Quality: a tie again. Dropping the core rules took it from +23% to a tie, which supports the hypothesis that general
+rules in every task push the agent to do more. But A itself varied 11% between the 2nd and 3rd measurements: with 4 runs,
+"a tie" is all that can be said.
+
+**Conclusion of the three measurements:** there is no proof that the picking list saves anything, and the fixed core
+costs extra on small tasks. It can be turned off (`BOARD_ROMANEIO=0`) or used without the core (leave `nucleoDono`
+empty in `mentes.json`). The next step is picking by meaning (embeddings), not by keyword.
 
 ---
 
