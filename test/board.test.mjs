@@ -191,6 +191,15 @@ test("HTTP: tela com ETag/304, validação de entrada, várias tarefas numa mens
   assert.equal(r1.status, 200);
   assert.equal(r1.headers.get("cache-control"), "no-cache");
   assert.equal((await fetch(b.url + "/", { headers: { "if-none-match": r1.headers.get("etag") } })).status, 304);
+  for (const arq of ["/estilo.css", "/js/base.js", "/js/inicio.js"]) {
+    const r = await fetch(b.url + arq);
+    assert.equal(r.status, 200, arq);
+    assert.match(r.headers.get("content-type"), arq.endsWith(".css") ? /^text\/css/ : /^text\/javascript/);
+    assert.equal(r.headers.get("cache-control"), "no-cache");
+    assert.equal((await fetch(b.url + arq, { headers: { "if-none-match": r.headers.get("etag") } })).status, 304, arq + " sem mudança → 304");
+  }
+  for (const fora of ["/js/../../board.mjs", "/js/%2e%2e/%2e%2e/data/board.json", "/../board.mjs", "/js/nao-existe.js", "/board.mjs", "/servidor/config.mjs", "/data/board.json"])
+    assert.equal((await fetch(b.url + fora)).status, 404, fora);
   assert.equal((await b.api("POST", "/api/tasks", { text: "  " })).status, 400);
   assert.equal((await b.api("GET", "/api/nao-existe")).status, 404);
   assert.equal((await b.api("GET", "/api/tasks/9999")).status, 404);

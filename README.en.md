@@ -293,16 +293,19 @@ or gray (no reading). *(In this screenshot, the database names were changed.)*
 
 | File | Role |
 |---|---|
-| `board.mjs` | HTTP + SSE server, queue, engines, pipeline, delivery, memory, picking list |
-| `web/index.html` | the whole UI (HTML + CSS + JS, no build) |
+| `board.mjs` | the entry point: loads `servidor/` and starts the port and the queue |
+| `servidor/` | one module per subject: config, state, projects and copies, engines, rules, pipeline, conversation, queue, tasks, usage and quota, memory, control, monitoring, attachments, HTTP |
+| `web/` | the UI, no build: `index.html` (skeleton), `estilo.css` and one script per screen in `js/` |
 | `board-cli.mjs` | the `board` CLI |
 | `busca.mjs` | semantic task search (embeddings), falling back to keyword search |
 | `board.sh` | keeps the server running; a restart requested from the UI exits with code 75 and comes back in 1 s |
 | `memoria/` | the shared memory setup: server, backup, fallback and mirror |
-| `test/` | 70 tests (`npm test`, ~40 s, `node:test` only): the functions that decide on their own, and the whole board in an isolated sandbox with a fake `claude` — no real agent, no cost |
+| `test/` | 90 tests (`npm test`, ~50 s, `node:test` only): the functions that decide on their own, the whole board in an isolated sandbox with a fake `claude`, and the UI in a headless Chrome — no real agent, no cost |
 
-**The tests bite:** 9 defects planted on purpose (a verdict that approves with no verdict, production running in the
-owner's folder, the gate skipped…) and all 9 failed. GitHub runs the suite on every PR.
+**The tests bite:** 17 defects planted on purpose (a verdict that approves with no verdict, production running in the
+owner's folder, the gate skipped, the agent's HTML running in the UI…) and all 17 failed. GitHub runs the suite on every PR.
+**Refactor without changing anything:** `npm run fotografia` records the content and computed style of 32 screens and 19
+routes, with fixed data and a frozen clock; before and after a change, both must come out identical.
 
 License: [MIT](LICENSE).
 
