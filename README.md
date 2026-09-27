@@ -113,8 +113,23 @@ reaproveitaram o que já existia). Hipótese: regras gerais do dono ("executar o
 agente a fazer mais. E a busca por palavra não levou a regra que mais importava para a tarefa, porque o pedido dizia
 a mesma coisa com outras palavras.
 
-**Conclusão das duas medições:** não há prova de que o romaneio economize. Por isso ele pode ser desligado
-(`BOARD_ROMANEIO=0`) e o próximo passo é a separação por sentido (embeddings), não por palavra.
+### Terceira medição: sem as regras gerais do dono, empate
+
+A mesma tarefa, 4 rodadas por lado, mas o romaneio (C) levou só as memórias da tarefa, sem o núcleo de O Dono.
+
+| | Custo | Turnos | Tempo | Tokens escritos |
+|---|---|---|---|---|
+| **Média A (sem)** | US$ 2,26 | 66 | 5min57 | 27.874 |
+| **Média C (só as memórias da tarefa)** | US$ 2,23 (−2%) | 62 (−6%) | 6min29 (+9%) | 28.147 (+1%) |
+| Faixa de custo | A: 2,00 – 2,44 | C: 1,87 – 2,44 | | |
+
+Qualidade: empate de novo. Tirar o núcleo levou de +23% a empate, o que apoia a hipótese de que regras gerais em toda
+tarefa empurram o agente a fazer mais. Mas o próprio A variou 11% entre a 2ª e a 3ª medição: com 4 rodadas, "empate" é
+o máximo que dá para dizer.
+
+**Conclusão das três medições:** não há prova de que o romaneio economize, e o núcleo fixo custa caro em tarefa pequena.
+O romaneio pode ser desligado (`BOARD_ROMANEIO=0`) ou usado sem núcleo (deixe `nucleoDono` vazio no `mentes.json`).
+O próximo passo é a separação por sentido (embeddings), não por palavra.
 
 ---
 

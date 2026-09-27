@@ -91,7 +91,8 @@ Depois vêm as tarefas.
 ## Limites
 
 - **O romaneio não economizou.** Na 1ª medição (2 rodadas por lado) foi 6% mais barato, dentro do acaso; na 2ª
-  (4 rodadas por lado) foi **23% mais caro e 35% mais lento**, com a mesma qualidade. Números no [README](../README.md).
+  (4 rodadas por lado) foi **23% mais caro e 35% mais lento**, com a mesma qualidade; na 3ª, sem o núcleo de O Dono,
+  empatou (−2%). Números no [README](../README.md).
 - **O núcleo de "O Dono" é escolhido à mão:** as regras dele são gerais, e a busca por palavra não sabe quais pesam
   mais; por isso `nucleoDono` (no `mentes.json`) lista as que vão sempre. Regra de um projeto só leva `soNoProjeto: true`.
 - **O romaneio só ajuda quando a memória tem o assunto.** Numa tarefa sobre algo nunca tratado, ele leva memória geral.
