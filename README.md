@@ -298,10 +298,10 @@ Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram
 | `busca.mjs` | busca de tarefas por sentido (embeddings), com recuo para busca por palavra |
 | `board.sh` | mantém o servidor no ar; o reinício pedido pela tela sai com código 75 e volta em 1 s |
 | `memoria/` | a montagem da memória compartilhada: servidor, backup, reserva e espelho |
-| `test/` | 90 testes (`npm test`, ~50 s, só `node:test`): as funções que decidem sozinhas, o board inteiro numa caixa isolada com um `claude` falso, e a tela num Chrome sem janela — sem agente de verdade, sem custo |
+| `test/` | 98 testes (`npm test`, ~50 s, só `node:test`): as funções que decidem sozinhas, o board inteiro numa caixa isolada com `claude`, `codex`, `agy` e `opencode` falsos que falam o formato real de cada um (inclusive a troca de motor quando a cota acaba), e a tela num Chrome sem janela — sem agente de verdade, sem custo |
 
-**Os testes mordem:** 17 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
-do dono, portão ignorado, HTML do agente executando na tela…) e os 17 reprovaram. O GitHub roda a bateria em todo PR.
+**Os testes mordem:** 27 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
+do dono, portão ignorado, HTML do agente executando na tela, Codex retomando com o sandbox errado…) e os 27 reprovaram. O GitHub roda a bateria em todo PR.
 **Reorganizar sem mudar nada:** `npm run fotografia` grava o conteúdo e o estilo de 32 telas e 19 rotas, com dados fixos e
 relógio parado; antes e depois de mexer, as duas têm de sair idênticas.
 
