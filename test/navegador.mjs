@@ -97,6 +97,11 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   const tamanho = (l, a) => cmd("Emulation.setDeviceMetricsOverride", { width: l, height: a, deviceScaleFactor: 1, mobile: l < 760 });
   const fechar = async () => {
     if (cobertura) { await coletar(); const { writeFileSync } = await import("node:fs"); writeFileSync(join(cobertura, `tela-${process.pid}-${Date.now()}.json`), JSON.stringify(coletas)); }
-    try { ws.close(); } catch { /* já fechou */ } cp.kill("SIGKILL"); await esperar(200); rmSync(perfil, { recursive: true, force: true }); };
+    try { ws.close(); } catch { /* já fechou */ }
+    cp.kill("SIGKILL");
+    // Espera o Chrome sair DE FATO: apagar o perfil com ele ainda escrevendo dava ENOTEMPTY no Linux (CI de 27/09).
+    await Promise.race([new Promise((ok) => (cp.exitCode !== null || cp.signalCode ? ok() : cp.once("exit", ok))), esperar(5000)]);
+    try { rmSync(perfil, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 }); } catch { /* faxina não reprova teste */ }
+  };
   return { cmd, avaliar, carregar, quieto, foto, tamanho, fechar, erros, dialogos };
 }
