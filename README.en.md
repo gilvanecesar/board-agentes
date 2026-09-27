@@ -151,6 +151,33 @@ Quality: a tie (8 of 8 on the checks and on the functional test). Swapping 5 loo
 removed the extra cost — core included. With 4 runs per side, **a tie** is all that can be said: none of the four
 measurements showed savings, and the last one no longer shows extra cost.
 
+## Board × AI alone (Sep 27, 2026)
+
+The same person asking for the same things: on one side Claude Code alone in the folder; on the other, the board (house
+rules, picking list, gate, reviewer, QA). Same model (Opus 5.5), 3 runs per task, and a **hidden answer key** neither side
+saw, scored per item (0 to 5).
+
+**Round 1 — small tasks, with the rules WRITTEN in CLAUDE.md:** a tie, 12/12 on both sides. The board cost 4.4× and made a
+difference in only 1 case (the reviewer required the timezone test to actually catch the bug).
+
+**Round 2 — bigger tasks, with the rules NOT written** (cancellation with refund, CSV import with Brazilian prices, monthly
+commission, login attempt limit):
+
+| | AI alone | Board |
+|---|---|---|
+| Score on the hidden answer key | 54/60 | **59/60** |
+| Perfect deliveries | 9/12 | **11/12** |
+| Delivered as "done" but incomplete | 3 | **1** |
+| Average cost per task | **US$ 0.25** | US$ 1.06 (4.2×) |
+| Average time | **44 s** | 3m41s (5×) |
+
+The whole difference came from the **login**: the AI alone, in all 3 runs, also counted failures per IP and didn't reset the
+IP on success — on a shared IP (an office, mobile data), whoever mistypes a password locks everyone out for 15 minutes. The
+board got it right 2 out of 3 (the picking list carried the "rate limit by the real IP" lesson from memory), and the **QA
+rejected**, in one run, a defect the answer key didn't even test: failing across the window boundary allowed 6 guesses in
+1 second without a lock. **Reading:** on small, well-specified tasks the model alone is enough; the board pays off where the
+rule isn't written and mistakes are expensive (security, money, production) — and charges ~4× the cost and ~5× the time for it.
+
 ---
 
 ## Installation
