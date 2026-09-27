@@ -146,14 +146,14 @@ test("tela do inventário: descartar pede confirmação; juntar mostra a versão
   await nav.carregar(b.url + "/?b=1"); await nav.quieto({ min: 600 });
   const ate = async (expr) => { for (let i = 0; i < 80; i++) { if (await nav.avaliar(expr)) return; await esperar(150); } throw new Error("não chegou: " + expr); };
   await ate(`!!document.querySelector('[data-inv-quase="demo/sessao-velha"]')`);
-  await nav.avaliar(`document.querySelector('[data-inv-quase="demo/sessao-velha"]').click()`);
+  await ate(`(() => { const b = document.querySelector('[data-inv-quase="demo/sessao-velha"]'); if (!b) return false; b.click(); return true; })()`);
   await ate(`!!document.querySelector('[data-inv-descartar="demo/sessao-velha"]')`);
   assert.deepEqual(memLog(caixa), [], "o 1º clique só pede confirmação");
-  await nav.avaliar(`document.querySelector('[data-inv-descartar="demo/sessao-velha"]').click()`);
+  await ate(`(() => { const b = document.querySelector('[data-inv-descartar="demo/sessao-velha"]'); if (!b) return false; b.click(); return true; })()`);
   for (let i = 0; i < 50 && !memLog(caixa).length; i++) await esperar(100);
   assert.equal(memLog(caixa)[0]?.[0], "delete-page", "o 2º clique apaga");
   await ate(`!!document.querySelector('[data-inv-juntar]')`);
-  await nav.avaliar(`document.querySelector('[data-inv-juntar]').click()`);
+  await ate(`(() => { const b = document.querySelector('[data-inv-juntar]'); if (!b) return false; b.click(); return true; })()`);
   await ate(`!!document.querySelector('[data-inv-aplicar]')`);
   assert.ok(await nav.avaliar(`[...document.querySelectorAll(".inv-prev strong")].some((e) => e.textContent === "única")`), "a proposta aparece, em markdown");
   assert.equal(memLog(caixa).length, 1, "ver a proposta não aplica nada");

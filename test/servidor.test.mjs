@@ -191,3 +191,27 @@ test("sobe com as rotinas de fundo ligadas (como no dia a dia) sem erro de carre
   assert.equal((await b.api("GET", "/api/controle")).status, 200);
   assert.doesNotMatch(b.saida(), /ReferenceError|TypeError|SyntaxError|Cannot access .* before initialization/);
 });
+
+test("barrado por permissão e nada mudou: para na hora, sem conferência e SEM retentativa — e diz o que foi barrado", async () => {
+  const { caixa, b } = await preparar({ env: { BOARD_RETENTATIVAS: "2", BOARD_RETENTATIVA_MIN: "0.02" },
+    cenario: { agente: [{ texto: "não consegui editar: o arquivo é protegido", negado: "src/carrinho.js" }] } });
+  const [t] = await criar(b, "mude o carrinho");
+  const fim = await esperarStatus(b, t.id, ["executada", "erro"]);
+  assert.equal(fim.status, "erro");
+  assert.match(fim.error, /bloqueado por permissão \(Edit .*src\/carrinho\.js\) — precisa de você/);
+  await esperar(2500); // tempo de sobra para uma retentativa (1,2 s) acontecer, se fosse acontecer
+  assert.deepEqual(chamadas(caixa).map((c) => c.papel), ["agente"], "nem revisor, nem QA, nem outra rodada");
+  const ev = await log(b, t.id);
+  assert.ok(ev.some((e) => e.t === "retentativa" && e.estado === "manual" && /barrado por permissão/.test(e.texto)));
+  assert.equal((await tarefa(b, t.id)).status, "erro");
+});
+
+test("barrado numa ferramenta mas o agente contornou e entregou: segue a esteira, com o aviso na linha do tempo", async () => {
+  const { caixa, b } = await preparar({ cenario: { agente: [{ texto: "fiz por outro caminho", negado: "src/x.js", escreve: { arquivo: "ok.txt" } }], revisor: ["APROVADO"], qa: ["APROVADO"] } });
+  const [t] = await criar(b, "faça");
+  const fim = await esperarStatus(b, t.id, ["executada", "erro"]);
+  assert.equal(fim.status, "executada", fim.error);
+  assert.deepEqual(chamadas(caixa).map((c) => c.papel), ["agente", "revisor", "qa"]);
+  assert.ok((await log(b, t.id)).some((e) => /a permissão barrou: Edit/.test(e.texto || "")));
+});
+

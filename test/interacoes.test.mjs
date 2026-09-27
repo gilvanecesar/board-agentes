@@ -47,14 +47,14 @@ const mentes = () => JSON.parse(readFileSync(join(caixa.board, "data", "mentes.j
 
 test("conferir o endereçamento pela tela: mover de mente, conferir e aprovar", { skip: pular }, async () => {
   await abrir("", { tab: "memoria", memoriaModo: "galpao", galpaoPP: "mente" });
-  await ate(`document.body.innerText.includes("Para conferir: 1")`);
-  await nav.avaliar(`(() => { const s = document.querySelector('[data-mover="api-pagamentos/estorno-mesmo-meio"]'); s.value = "produto"; s.dispatchEvent(new Event("change")); })()`);
+  // A tela se redesenha quando o inventário termina de carregar: espera o SELETOR (não o texto) e repete a ação até ela pegar.
+  await ate(`(() => { const s = document.querySelector('[data-mover="api-pagamentos/estorno-mesmo-meio"]'); if (!s) return false; s.value = "produto"; s.dispatchEvent(new Event("change")); return true; })()`);
   await ate(`!!document.querySelector("[data-aprovar]")`);
   const m = mentes();
   assert.equal(m.mapa["api-pagamentos/estorno-mesmo-meio"].mente, "produto");
   assert.equal(m.mapa["api-pagamentos/estorno-mesmo-meio"].confianca, "dono");
   assert.equal(m.status, "proposta", "mexeu: precisa aprovar de novo");
-  await nav.avaliar(`document.querySelector("[data-aprovar]").click()`);
+  await ate(`(() => { const b = document.querySelector("[data-aprovar]"); if (!b) return false; b.click(); return true; })()`);
   for (let i = 0; i < 40 && mentes().status !== "aprovada"; i++) await esperar(100);
   assert.equal(mentes().status, "aprovada");
   assert.deepEqual(nav.erros, []);
@@ -64,10 +64,10 @@ test("conversa: ⏹ para a resposta que demora; 🧹 começa fio novo (com confi
   await abrir("#/c/demo");
   await nav.avaliar(`(() => { const e = document.querySelector("#convIn"); e.value = "pense bastante"; e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); })()`);
   await ate(`[...document.querySelectorAll("button")].some((x) => /parar/.test(x.textContent))`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => /parar/.test(x.textContent)).click()`);
+  await ate(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /parar/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   await ate(`(async () => !(await (await fetch("/api/conversa/demo")).json()).busy)()`);
   await ate(`[...document.querySelectorAll("button")].some((x) => /novo fio/.test(x.textContent))`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => /novo fio/.test(x.textContent)).click()`);
+  await ate(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /novo fio/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   await ate(`(async () => (await (await fetch("/api/conversa/demo")).json()).events.length === 0)()`);
   assert.match(nav.dialogos.join("\n"), /Começar um fio novo\?/);
   await ate(`!document.querySelector("#timeline") || !document.querySelector("#timeline").innerText.includes("pense bastante")`);
@@ -78,7 +78,7 @@ test("busca: clicar numa busca recente refaz a consulta", { skip: pular }, async
   await abrir("#/busca");
   await ate(`!!document.querySelector(".bh")`);
   const q = await nav.avaliar(`document.querySelector(".bh").innerText`);
-  await nav.avaliar(`document.querySelector(".bh").click()`);
+  await ate(`(() => { const b = document.querySelector(".bh"); if (!b) return false; b.click(); return true; })()`);
   await ate(`document.querySelector("#buscaIn").value.length > 0`);
   assert.ok(q.includes(await nav.avaliar(`document.querySelector("#buscaIn").value`)), "a consulta do histórico voltou para o campo");
   await ate(`!!document.querySelector(".bres") || document.body.innerText.includes("Nada")`);
@@ -87,7 +87,7 @@ test("busca: clicar numa busca recente refaz a consulta", { skip: pular }, async
 test("📦 na ficha: clicar numa memória do romaneio abre ela na Memória", { skip: pular }, async () => {
   await abrir("#/t/12");
   await ate(`!!document.querySelector(".ev.romaneio")`);
-  await nav.avaliar(`document.querySelector(".ev.romaneio").open = true; document.querySelector(".rom-lista button").click()`);
+  await ate(`(() => { const d = document.querySelector(".ev.romaneio"); if (!d) return false; d.open = true; const b = document.querySelector(".rom-lista button"); if (!b) return false; b.click(); return true; })()`);
   await ate(`!!document.querySelector("#memoria") && !!document.querySelector("#grafoPagina h3")`);
   assert.match(await nav.avaliar(`document.querySelector("#grafoPagina h3").textContent`), /Webhook do Pix tem que ser idempotente/);
 });
@@ -100,7 +100,7 @@ test("📎 PDF entra como ícone + nome, e o × tira o anexo antes de enviar", {
   await nav.cmd("DOM.setFileInputFiles", { nodeId, files: [pdf] });
   await ate(`!!document.querySelector('#anexosIncluir .anexo .pdf')`);
   assert.match(await nav.avaliar(`document.querySelector("#anexosIncluir").innerText`), /📄 PDF[\s\S]*contrato\.pdf/);
-  await nav.avaliar(`document.querySelector("#anexosIncluir .x").click()`);
+  await ate(`(() => { const b = document.querySelector("#anexosIncluir .x"); if (!b) return false; b.click(); return true; })()`);
   await ate(`!document.querySelector("#anexosIncluir .anexo")`);
 });
 
@@ -122,7 +122,7 @@ test("⇪ Mesclar e publicar: com comando declarado, pede confirmação MOSTRAND
   await b.api("POST", "/api/fila/pausar");
   await abrir(`#/t/${t.id}`);
   await ate(`[...document.querySelectorAll("button")].some((x) => /Mesclar e publicar/.test(x.textContent))`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => /Mesclar e publicar/.test(x.textContent)).click()`);
+  await ate(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /Mesclar e publicar/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   for (let i = 0; i < 40 && (await b.api("GET", `/api/tasks/${t.id}`)).json.task.acao !== "deploy"; i++) await esperar(100);
   assert.match(nav.dialogos.join("\n"), /MESCLAR o PR e PUBLICAR o projeto api-pagamentos:\s+\$ \.\/publicar\.sh --producao/);
   assert.equal((await b.api("GET", `/api/tasks/${t.id}`)).json.task.acao, "deploy", "só depois do 'sim' entra na fila");

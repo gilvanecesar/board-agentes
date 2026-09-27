@@ -123,6 +123,9 @@ export const MOTORES = {
         // ⚠️ Marcador PRÓPRIO do CLI, não palavra solta: a regra antiga (/rate limit/) marcava
         // como "limite" a resposta legítima de um agente que FALOU de rate limit no resumo.
         const cota = /cc_cli_limit_message/.test(texto) || /^you'?ve hit your [\w ]*limit\b/i.test(texto.trim());
+        // O que a permissão BARROU (arquivo sensível, ferramenta fora da lista): vem estruturado no fim da rodada.
+        if (Array.isArray(ev.permission_denials) && ev.permission_denials.length)
+          out.negadas = ev.permission_denials.map((d) => cut(`${d.tool_name} ${d.tool_input?.file_path || d.tool_input?.command || ""}`.trim(), 160));
         if (ev.is_error || cota) ctx.erro(cut(texto || ev.error || out.ultimoSolto || "o claude devolveu erro", 300), cota);
         else ctx.resultado(texto, { custo: ev.total_cost_usd || 0 });
       }

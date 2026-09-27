@@ -124,6 +124,7 @@ test("tela do Controle: selo de cada backup, a faixa dos 14 dias (automático ×
   await nav.carregar(b.url + "/?a");
   await nav.avaliar(`localStorage.setItem("board.tab", JSON.stringify("controle"))`);
   await nav.carregar(b.url + "/?b"); await nav.quieto({ min: 600 });
+  const ate_ = async (expr) => { for (let i = 0; i < 80; i++) { if (await nav.avaliar(expr)) return; await esperar(120); } throw new Error("não chegou: " + expr); };
   const linha = (id) => nav.avaliar(`(() => { const l = document.querySelector('[data-abre="${id}"]').closest(".ctl-linha"); return { estado: l.dataset.state, texto: l.innerText, dias: [...l.querySelectorAll(".ctl-dia")].map((d) => d.className.replace("ctl-dia ctl-", "")) }; })()`);
   const mem = await linha("memoria"), a = await linha("banco-a"), b2 = await linha("banco-b");
   assert.match(mem.texto, /Em dia/); assert.match(a.texto, /Atenção/, "o arquivo da noite não chegou ao Drive"); assert.match(b2.texto, /Falhou/);
@@ -133,7 +134,7 @@ test("tela do Controle: selo de cada backup, a faixa dos 14 dias (automático ×
   assert.deepEqual(mem.dias.slice(-2), ["auto", "auto"]);
   const tudo = await nav.avaliar("document.body.innerText");
   assert.match(tudo, /Banco B: a última rodada falhou/);
-  await nav.avaliar(`document.querySelector('[data-abre="banco-a"]').click()`);
+  await ate_(`(() => { const b = document.querySelector('[data-abre="banco-a"]'); if (!b) return false; b.click(); return true; })()`);
   for (let i = 0; i < 40 && !(await nav.avaliar(`!!document.querySelector(".ctl-det")`)); i++) await esperar(100);
   const det = await nav.avaliar(`document.querySelector(".ctl-det").innerText`);
   assert.match(det, /pg_restore/, "o detalhe traz o comando de recuperar");
