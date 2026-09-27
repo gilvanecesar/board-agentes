@@ -291,16 +291,19 @@ Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram
 
 | Arquivo | Papel |
 |---|---|
-| `board.mjs` | servidor HTTP + SSE, fila, motores, esteira, entrega, memória, romaneio |
-| `web/index.html` | a tela inteira (HTML + CSS + JS, sem build) |
+| `board.mjs` | a entrada: carrega `servidor/` e sobe a porta e a fila |
+| `servidor/` | um módulo por assunto: configuração, estado, projetos e cópias, motores, regras, esteira, conversa, fila, tarefas, uso e cota, memória, controle, monitoramento, anexos, HTTP |
+| `web/` | a tela, sem build: `index.html` (esqueleto), `estilo.css` e um script por tela em `js/` |
 | `board-cli.mjs` | a CLI `board` |
 | `busca.mjs` | busca de tarefas por sentido (embeddings), com recuo para busca por palavra |
 | `board.sh` | mantém o servidor no ar; o reinício pedido pela tela sai com código 75 e volta em 1 s |
 | `memoria/` | a montagem da memória compartilhada: servidor, backup, reserva e espelho |
-| `test/` | 70 testes (`npm test`, ~40 s, só `node:test`): as funções que decidem sozinhas e o board inteiro numa caixa isolada, com um `claude` falso — sem agente de verdade, sem custo |
+| `test/` | 90 testes (`npm test`, ~50 s, só `node:test`): as funções que decidem sozinhas, o board inteiro numa caixa isolada com um `claude` falso, e a tela num Chrome sem janela — sem agente de verdade, sem custo |
 
-**Os testes mordem:** 9 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
-do dono, portão ignorado…) e os 9 reprovaram. O GitHub roda a bateria em todo PR.
+**Os testes mordem:** 17 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
+do dono, portão ignorado, HTML do agente executando na tela…) e os 17 reprovaram. O GitHub roda a bateria em todo PR.
+**Reorganizar sem mudar nada:** `npm run fotografia` grava o conteúdo e o estilo de 32 telas e 19 rotas, com dados fixos e
+relógio parado; antes e depois de mexer, as duas têm de sair idênticas.
 
 Licença: [MIT](LICENSE).
 

@@ -18,6 +18,23 @@ const FALSO_CLAUDE = `#!/usr/bin/env node
 const fs = require("fs"), path = require("path");
 const H = process.env.HOME, a = process.argv.slice(2);
 const arg = (f) => { const i = a.indexOf(f); return i >= 0 ? a[i + 1] : undefined; };
+// Conversation mode: ONE live process, one message per stdin line (like the real CLI with --input-format stream-json).
+if (a.includes("--input-format")) {
+  const cen = JSON.parse(fs.readFileSync(path.join(H, "cenario.json"), "utf8"));
+  const cp = path.join(H, "processos-conversa"); fs.writeFileSync(cp, String((fs.existsSync(cp) ? Number(fs.readFileSync(cp, "utf8")) : 0) + 1));
+  const sid = arg("--resume") || "sessao-conversa-" + process.pid; let total = 0, buf = "";
+  const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+  process.stdin.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); if (!l.trim()) continue;
+    const msg = JSON.parse(l).message.content[0].text; const conta = path.join(H, "conta-conversa");
+    const n = fs.existsSync(conta) ? Number(fs.readFileSync(conta, "utf8")) : 0; fs.writeFileSync(conta, String(n + 1));
+    fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel: "conversa", n, args: a, cwd: process.cwd(), msg, t: Date.now() }) + "\\n");
+    const lista = cen.conversa || ["ok"]; const txt = lista[Math.min(n, lista.length - 1)];
+    total += 0.02; out({ type: "system", subtype: "init", session_id: sid });
+    out({ type: "assistant", session_id: sid, message: { content: [{ type: "text", text: txt }] } });
+    out({ type: "result", session_id: sid, result: txt, total_cost_usd: total, num_turns: 1, duration_ms: 3 }); } });
+  process.stdin.on("end", () => process.exit(0));
+  return;
+}
 const prompt = arg("-p") || "";
 const papel = prompt === "/usage" ? "uso" : /^Revise a tarefa/.test(prompt) ? "revisor" : /^Teste a entrega/.test(prompt) ? "qa"
   : /Classifique o PORTE/.test(prompt) ? "porte" : "agente";
@@ -28,8 +45,11 @@ fs.writeFileSync(conta, String(n + 1));
 fs.appendFileSync(path.join(H, "chamadas.jsonl"), JSON.stringify({ papel, n, args: a, cwd: process.cwd(), t: Date.now() }) + "\\n");
 if (papel === "uso") { console.log(JSON.stringify({ type: "result", result: "", total_cost_usd: 0 })); process.exit(0); }
 if (papel === "porte") { console.log(JSON.stringify({ result: "leve", total_cost_usd: 0.001 })); process.exit(0); }
-const lista = cen[papel] || [{ texto: papel === "agente" ? "feito" : "APROVADO" }];
-const passo = typeof lista[Math.min(n, lista.length - 1)] === "string" ? { texto: lista[Math.min(n, lista.length - 1)] } : lista[Math.min(n, lista.length - 1)];
+const lista = (cen[papel] || [{ texto: papel === "agente" ? "feito" : "APROVADO" }]).map((x) => typeof x === "string" ? { texto: x } : x);
+// An item with "quando" answers the prompt it matches; the others answer in call order.
+const porPedido = lista.find((x) => x.quando && new RegExp(x.quando).test(prompt));
+const seq = lista.filter((x) => !x.quando);
+const passo = porPedido || seq[Math.min(n, seq.length - 1)] || { texto: "feito" };
 const sid = arg("--resume") || "sessao-" + papel + "-" + n + "-" + process.pid;
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
 out({ type: "system", subtype: "init", session_id: sid });
@@ -48,7 +68,10 @@ passo.dorme ? setTimeout(fim, passo.dorme) : fim();
 const MUDOS = ["codex", "agy", "opencode", "ssh", "rclone", "docker", "ai-memory", "tmux", "osascript", "open", "ollama"];
 const FALSO_GH = `#!/bin/sh
 echo "gh $*" >> "$HOME/gh.log"
-case "$1 $2" in "pr view") echo "board/1-teste" ;; esac
+case "$1 $2" in
+  "pr view") echo "board/1-teste" ;;
+  "pr merge") [ -f "$HOME/gh-merge-falha" ] && { echo "merge recusado" >&2; exit 1; } ;;
+esac
 exit 0
 `;
 
@@ -84,6 +107,7 @@ export function criarCaixa() {
   for (const d of [board, home, dev, bin, join(board, "data")]) mkdirSync(d, { recursive: true });
   for (const f of ["board.mjs", "busca.mjs", "board-cli.mjs"]) cpSync(join(FONTE, f), join(board, f));
   cpSync(join(FONTE, "web"), join(board, "web"), { recursive: true });
+  if (existsSync(join(FONTE, "servidor"))) cpSync(join(FONTE, "servidor"), join(board, "servidor"), { recursive: true });
   const escreve = (nome, txt) => { writeFileSync(join(bin, nome), txt); chmodSync(join(bin, nome), 0o755); };
   escreve("claude", FALSO_CLAUDE);
   escreve("gh", FALSO_GH);
@@ -101,14 +125,18 @@ export function envDaCaixa(caixa, extra = {}) {
     BOARD_PROJETOS: caixa.dev, BOARD_SEM_ROTINAS: "1", BOARD_CLASSIFICAR: "0", BOARD_ROMANEIO: "0",
     BOARD_BUSCA_PROVEDOR: "lexico", BOARD_LOG_CRU: "0", BOARD_RETENTATIVAS: "0", BOARD_PRODUCAO: "",
     BOARD_ESPELHO_MEMORIA: join(caixa.raiz, "memoria"),
+    // Some readings call the REAL binaries (/opt/homebrew/bin comes first in their PATH): point them at nothing,
+    // so the sandbox never reads the owner's containers, Drive or memory server.
+    DOCKER_HOST: "unix:///nao-existe/docker.sock", RCLONE_CONFIG: join(caixa.raiz, "sem-rclone.conf"),
+    AI_MEMORY_SERVER_URL: "http://127.0.0.1:9", AI_MEMORY_AUTH_TOKEN: "",
     ...extra,
   };
 }
 
 /** Starts the isolated board and waits until it answers. Returns { url, api, fim, ... }. */
-export async function subirBoard(caixa, extra = {}) {
+export async function subirBoard(caixa, extra = {}, { nodeArgs = [] } = {}) {
   const porta = await portaLivre();
-  const cp = spawn(process.execPath, ["board.mjs"], { cwd: caixa.board, env: envDaCaixa(caixa, { BOARD_PORT: String(porta), ...extra }), stdio: ["ignore", "pipe", "pipe"] });
+  const cp = spawn(process.execPath, [...nodeArgs, "board.mjs"], { cwd: caixa.board, env: envDaCaixa(caixa, { BOARD_PORT: String(porta), ...extra }), stdio: ["ignore", "pipe", "pipe"] });
   let saida = ""; cp.stdout.on("data", (d) => (saida += d)); cp.stderr.on("data", (d) => (saida += d));
   const url = `http://127.0.0.1:${porta}`;
   for (let i = 0; i < 100; i++) {
