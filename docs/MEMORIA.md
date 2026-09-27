@@ -99,7 +99,8 @@ Depois vêm as tarefas.
 
 - **O romaneio não economizou.** Na 1ª medição (2 rodadas por lado) foi 6% mais barato, dentro do acaso; na 2ª
   (4 rodadas por lado) foi **23% mais caro e 35% mais lento**, com a mesma qualidade; na 3ª, sem o núcleo de O Dono,
-  empatou (−2%). Números no [README](../README.md).
+  empatou (−2%); na 4ª, com o romaneio novo (palavra + sentido, bônus corrigido) e o núcleo, empatou (−1%). Números no
+  [README](../README.md).
 - **O núcleo de "O Dono" é escolhido à mão:** as regras dele são gerais, e a busca por palavra não sabe quais pesam
   mais; por isso `nucleoDono` (no `mentes.json`) lista as que vão sempre. Regra de um projeto só leva `soNoProjeto: true`.
 - **Curva de giro:** no Galpão, cada memória mostra em quantas tarefas saiu e como essas tarefas foram na conferência (de

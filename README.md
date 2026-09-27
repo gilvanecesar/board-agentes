@@ -134,6 +134,21 @@ Desde então o romaneio separa também **por sentido** (embeddings no ollama loc
 10 pedidos escritos com outras palavras, achou a memória certa em 8/10, contra 5/10 só por palavra. Detalhes em
 [docs/MEMORIA.md](docs/MEMORIA.md).
 
+### Quarta medição: o romaneio novo, COM o núcleo do dono — empate
+
+A mesma tarefa, 4 rodadas por lado, agora com o romaneio por palavra **e sentido** e o bônus de projeto corrigido. O núcleo
+de regras do dono foi junto (na 2ª medição, com o romaneio antigo e o núcleo, tinha custado 23% a mais).
+
+| | Custo | Turnos | Tempo | Tokens escritos |
+|---|---|---|---|---|
+| **Média A (sem)** | US$ 2,21 | 61,3 | 5min21 | 27.237 |
+| **Média D (romaneio novo, com núcleo)** | US$ 2,19 (−1%) | 61,8 (+1%) | 5min01 (−6%) | 25.927 (−5%) |
+| Faixa de custo | A: 1,84 – 2,56 | D: 1,93 – 2,45 | | |
+
+Qualidade: empate (8 de 8 na verificação e no teste funcional). Trocar 5 memórias soltas por 5 ligadas ao pedido tirou o
+sobrecusto — com o núcleo e tudo. Com 4 rodadas por lado, **empate** é o máximo que dá para dizer: nenhuma das quatro
+medições mostrou economia, e a última deixou de mostrar custo a mais.
+
 ---
 
 ## Instalação
