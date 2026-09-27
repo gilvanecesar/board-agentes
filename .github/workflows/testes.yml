@@ -1,0 +1,19 @@
+# Em todo PR (e em push na main), o GitHub roda a bateria do board: 70 testes, sem agente de verdade e sem custo.
+# O dono mescla — mas vê antes se a esteira, a fila e as travas de produção continuam de pé.
+name: testes
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check
+      - run: npm test

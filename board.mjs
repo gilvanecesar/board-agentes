@@ -22,12 +22,14 @@ import { createServer } from "http";
 import { randomUUID, createHash } from "crypto";
 import { spawn, execFile, execFileSync } from "child_process";
 import { tmpdir } from "os";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, appendFileSync, renameSync, unlinkSync, statSync, symlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, appendFileSync, renameSync, unlinkSync, statSync, symlinkSync, realpathSync } from "fs";
 import { resolve, dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
 import { buscar, indexar, estadoBusca } from "./busca.mjs"; // procurar tarefa pelo sentido (embeddings)
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)));
+// Rodado direto (`node board.mjs`, o board.sh) sobe servidor e fila. Importado (os testes em test/) só expõe as funções.
+const PRINCIPAL = !!process.argv[1] && (() => { try { return realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
 const DEV = process.env.BOARD_PROJETOS || dirname(ROOT); // ~/Documents/DEV — os projetos são as pastas irmãs (no Docker: /projetos)
 const DATA = resolve(ROOT, "data");
 const LOGS = join(DATA, "logs");
@@ -3113,7 +3115,7 @@ server.on("error", (e) => {
 });
 // Só na máquina, por padrão: quem abre a tela manda agentes rodarem comandos. No Docker é 0.0.0.0, e a porta
 // é publicada só no 127.0.0.1 do host (docker run -p 127.0.0.1:4488:4488).
-server.listen(PORT, process.env.BOARD_HOST || "127.0.0.1", () => {
+if (PRINCIPAL) server.listen(PORT, process.env.BOARD_HOST || "127.0.0.1", () => {
   for (const t of interrupted) logEvent(t.id, { t: "fim", status: "pendente", motivo: "o board caiu enquanto rodava — confira o projeto e rode de novo" });
   // Erro de ANTES da retentativa existir (campo `retentativa` nunca gravado) ganha a sua chance
   // uma vez. Erro já tratado pelo código novo tem o campo (objeto ou null) e não é reagendado.
@@ -3126,3 +3128,10 @@ server.listen(PORT, process.env.BOARD_HOST || "127.0.0.1", () => {
   console.log(`${C.green}BOARD${C.r} ${C.txt}http://localhost:${PORT}${C.r}  ${C.dim}paralelo=${PARALLEL} (${PER_PROJECT} por projeto) · modelo=${MODEL || "padrão"} · permissão=${PERMISSION}${C.r}`);
   console.log(`${C.dim}${state.tasks.length} tarefa(s) no quadro · ${state.tasks.filter((t) => t.status === "fila").length} na fila. O que rodar aparece aqui embaixo.${C.r}`);
 });
+
+// Para os testes (test/unidade.test.mjs): as funções que decidem sozinhas — veredito, erro, cota, entrega, anexos, memória.
+export {
+  lerVeredito, classifyError, parseReset, modeloServe, splitTasks, catchPrUrl, deliveryRules, houseRules, gateCommand,
+  anexosValidos, comAnexos, salvarAnexo, montarRomaneio, inventariar, pctDeLimites, semCotaDoUso, dataDaMemoria, tipoDaMemoria,
+  mexeuEmArquivo, marcarInstante, titleOf, cut,
+};
