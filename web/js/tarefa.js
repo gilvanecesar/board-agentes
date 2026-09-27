@@ -145,8 +145,9 @@ function eventHtml(ev) {
     }
     case "romaneio": {
       const itens = ev.itens || [];
-      return `<details class="ev romaneio"><summary>📦 romaneio · ${itens.length} memórias · ~${Number(ev.tokens || 0).toLocaleString("pt-BR")} tokens · mentes: ${(ev.mentes || []).map((m) => ICONE_MENTE[m] || "").join(" ")} ${esc((ev.mentes || []).join(", "))}</summary>`
-        + `<div class="rom-lista">${itens.map((i) => `<button onclick="irParaMemoria(${esc(JSON.stringify(i.chave))})" title="abrir na Memória">${ICONE_MENTE[i.mente] || ""} ${esc(i.titulo)}${i.nota ? `<small>${i.nota}</small>` : ""}</button>`).join("")}</div></details>`;
+      return `<details class="ev romaneio"><summary>📦 romaneio · ${itens.length} memórias · ~${Number(ev.tokens || 0).toLocaleString("pt-BR")} tokens · mentes: ${(ev.mentes || []).map((m) => ICONE_MENTE[m] || "").join(" ")} ${esc((ev.mentes || []).join(", "))}${ev.modo === "palavra+sentido" ? " · por palavra e sentido" : ev.modo === "palavra" ? " · só por palavra" : ""}</summary>`
+        + (ev.semSentido ? `<div class="rom-aviso">sem o sentido nesta tarefa: ${esc(ev.semSentido)}</div>` : "")
+        + `<div class="rom-lista">${itens.map((i) => `<button onclick="irParaMemoria(${esc(JSON.stringify(i.chave))})" title="abrir na Memória${i.sentido != null ? ` · parecença de sentido ${Math.round(i.sentido * 100)}%` : ""}">${ICONE_MENTE[i.mente] || ""} ${esc(i.titulo)}${i.nota ? `<small>${i.nota}</small>` : ""}${i.sentido != null && !i.nota ? `<small>sentido ${Math.round(i.sentido * 100)}%</small>` : ""}</button>`).join("")}</div></details>`;
     }
     case "inicio": return `<div class="ev mark">▶ ${fmtDay(ev.at)} · começou em ${esc(ev.projeto)}</div>`;
     case "fim": return `<div class="ev mark ${ev.status === "erro" ? "err" : ""}">${ev.status === "erro" ? "✗" : "■"} ${fmtAt(ev.at)} · ${esc(ev.status)}${ev.motivo ? " — " + esc(ev.motivo) : ""}</div>`;

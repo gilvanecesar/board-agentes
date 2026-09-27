@@ -67,7 +67,7 @@ export { anexosValidos, comAnexos, salvarAnexo } from "./servidor/anexos.mjs";
 export { modeloServe, cut } from "./servidor/config.mjs";
 export { titleOf } from "./servidor/estado.mjs";
 export { lerVeredito, classifyError, parseReset, catchPrUrl, gateCommand, mexeuEmArquivo, marcarInstante } from "./servidor/esteira.mjs";
-export { montarRomaneio, inventariar, dataDaMemoria, tipoDaMemoria } from "./servidor/memoria.mjs";
+export { montarRomaneio, inventariar, dataDaMemoria, tipoDaMemoria, resultadoDaConferencia } from "./servidor/memoria.mjs";
 export { deliveryRules, houseRules } from "./servidor/regras.mjs";
 export { splitTasks } from "./servidor/tarefas.mjs";
 export { pctDeLimites, semCotaDoUso } from "./servidor/uso.mjs";

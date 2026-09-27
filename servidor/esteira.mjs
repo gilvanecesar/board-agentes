@@ -5,7 +5,7 @@ import { join } from "path";
 import { C, DATA, DEPLOY_FILE, DEPLOY_TIMEOUT_MS, GATE_FILE, GATE_TIMEOUT_MS, MOTOR_PADRAO, PRODUCAO, QA_LIGADO, QA_MODEL, QA_TIMEOUT_MS, RETRY_DELAY_MS, RETRY_MAX, REVIEW_MODEL, REVIEW_ROUNDS, REVISOR_LIGADO, cut, now, stripAnsi } from "./config.mjs";
 import { broadcast, gates, logEvent, save, state } from "./estado.mjs";
 import { criarCopia, haMudancas, nomeDeAgente, projectOf } from "./projetos.mjs";
-import { ROMANEIO_LIGADO, montarRomaneio } from "./memoria.mjs";
+import { ROMANEIO_LIGADO, montarRomaneio, sentidoDoPedido } from "./memoria.mjs";
 import { MOTORES, runAgent, runMotor } from "./motores.mjs";
 import { qaRules, reviewerRules } from "./regras.mjs";
 import { passarBastao, proximoMotorComCota, textoDaPassagem } from "./uso.mjs";
@@ -282,11 +282,11 @@ export async function runTask(task) {
   // Romaneio: só quando o agente começa do zero (sessão nova ou outro motor). Na retomada, a sessão já tem.
   let pedido = prompt;
   if (ROMANEIO_LIGADO && !task.sessionId && !erroAnterior) {
-    let rom = null; try { rom = montarRomaneio(task); } catch (e) { logEvent(task.id, { t: "solto", texto: "⚠ romaneio falhou: " + cut(e.message, 160) }); }
+    let rom = null; try { rom = montarRomaneio(task, { sentido: await sentidoDoPedido(task) }); } catch (e) { logEvent(task.id, { t: "solto", texto: "⚠ romaneio falhou: " + cut(e.message, 160) }); }
     if (rom) {
       pedido = rom.texto + "\n\n---\n\n## A tarefa\n\n" + prompt;
       const { texto, ...registro } = rom; task.romaneio = registro;
-      logEvent(task.id, { t: "romaneio", mentes: rom.mentes, itens: rom.itens, tokens: rom.tokensAprox });
+      logEvent(task.id, { t: "romaneio", mentes: rom.mentes, itens: rom.itens, tokens: rom.tokensAprox, modo: rom.modo, semSentido: rom.semSentido });
     }
   }
   let r = await runAgent(task, pedido, { resume: task.sessionId || undefined });

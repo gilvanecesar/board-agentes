@@ -2,9 +2,10 @@
 import { execFileSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync } from "fs";
 import { join, relative } from "path";
-import { DATA, ESPELHO_MEMORIA, cut, now } from "./config.mjs";
-import { logEvent } from "./estado.mjs";
+import { COM_ROTINAS, DATA, ESPELHO_MEMORIA, cut, now } from "./config.mjs";
+import { logEvent, state } from "./estado.mjs";
 import { envMemoria } from "./infra.mjs";
+import { configBusca, indexarMemoria, vetoresDaMemoria, vetorDoPedido, parecenca } from "../busca.mjs";
 
 // TEMAS cortam os projetos: a memória de um projeto pode morar quase toda no _global (veio da memória portátil,
 // que vale para todos), então "projeto" não acha ela — o tema acha pelo assunto do texto.
@@ -69,7 +70,7 @@ export const pistasDaMente = () => Object.fromEntries(Object.entries((lerMentes(
 export const PARADAS = new Set("para pelo pela como mais sobre entre quando onde sem com uma um uns umas dos das nos nas que por isso esse essa este esta aqui tudo cada todo toda fazer faz feito tem ter vai vou ser está estão também ainda depois antes agora hoje".split(" "));
 export const palavrasDe = (t) => [...new Set(semAcentoServidor(t).match(/[a-z0-9]{4,}/g) || [])].filter((w) => !PARADAS.has(w));
 export function semAcentoServidor(t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
-export function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
+export function montarRomaneio(task, { todasMentes = false, ate = null, sentido = null } = {}) {
   const m = lerMentes(); if (!m || m.status !== "aprovada") return null;
   const g = montarGrafo(); if (!g._porChave) return null;
   const pedido = semAcentoServidor(task.title + " " + task.text);
@@ -94,16 +95,34 @@ export function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
   // IDF do BM25: palavra presente em metade das páginas ou mais vale ~0 ("board", "projeto", "tarefa" somavam pontos em tudo).
   const idf = (w) => Math.max(0, Math.log((pags.length - df[w] + 0.5) / (df[w] + 0.5)));
   const mediaTam = pags.reduce((a, x) => a + x.corpo.length, 0) / (pags.length || 1);
+  // O bônus do MESMO projeto só vale para quem já bateu em alguma palavra do pedido. Antes ele valia sozinho: num projeto
+  // com 6+ memórias, as vagas do romaneio iam para páginas sem NADA a ver com o pedido (achado em 27/09, no teste do sentido).
   const nota = (x) => { const encurta = Math.min(1, Math.sqrt(mediaTam / Math.max(1, x.corpo.length)));
-    return termos.reduce((a, w) => a + (x.corpo.includes(w) ? idf(w) * (x.tit.includes(w) ? 3 : x.desc.includes(w) ? 2 : 0.5 * encurta) : 0), 0)
-      + (x.p.projeto === task.project ? 1.5 : 0); };
+    const base = termos.reduce((a, w) => a + (x.corpo.includes(w) ? idf(w) * (x.tit.includes(w) ? 3 : x.desc.includes(w) ? 2 : 0.5 * encurta) : 0), 0);
+    return base + (base > 0 && x.p.projeto === task.project ? 1.5 : 0); };
   for (const x of pags) x.nota = nota(x);
+  // SENTIDO (27/09): a parecença do pedido com cada memória (bge-m3 local). Palavra e sentido viram dois rankings, juntados
+  // pela posição (fusão de rankings: 1/(60+posição) em cada um) — as duas notas não estão na mesma escala, a posição está.
+  // Entra quem acha pela palavra OU está perto do melhor achado pelo sentido (≥ 85% dele e ≥ 0,42): no gabarito de 27/09
+  // a memória certa sempre ficou a ≥ 86% do melhor, e a mediana das outras, em ~0,40.
+  const temSentido = !!(sentido && sentido.vetorPedido);
+  if (temSentido) for (const x of pags) { const v = sentido.vetores[x.chave]; x.sim = v ? parecenca(sentido.vetorPedido, v) : null; }
+  const posicoes = (lista, campo) => { const m = new Map(); lista.filter((x) => x[campo] != null && x[campo] > 0).sort((a, b) => b[campo] - a[campo]).forEach((x, i) => m.set(x, i + 1)); return m; };
+  const fundir = (lista) => {
+    const pl = posicoes(lista, "nota"), ps = temSentido ? posicoes(lista, "sim") : new Map();
+    const melhor = temSentido ? Math.max(0, ...lista.map((x) => x.sim || 0)) : 0;
+    const perto = (x) => temSentido && x.sim != null && x.sim >= Math.max(0.42, melhor * 0.85);
+    for (const x of lista) x.peso = (pl.has(x) ? 1 / (60 + pl.get(x)) : 0) + (perto(x) ? 1 / (60 + ps.get(x)) : 0);
+    return lista.filter((x) => x.nota > 0 || perto(x)).sort((a, b) => b.peso - a.peso || String(b.p.atualizada).localeCompare(String(a.p.atualizada)));
+  };
   const porNota = (a, b) => b.nota - a.nota || String(b.p.atualizada).localeCompare(String(a.p.atualizada));
   // O Dono: o NÚCLEO fixo vai sempre, na ordem que o dono escolheu (data/mentes.json "nucleoDono"); depois, até 4 regras
   // dele que tenham a ver com o pedido. Antes era só por palavra, e às vezes ia "commit push test" no lugar de "veredito primeiro".
   const nucleo = (m.nucleoDono || []).map((k) => pags.find((x) => x.chave === k)).filter(Boolean);
-  const dono = [...nucleo, ...pags.filter((x) => x.mente === "dono" && !nucleo.includes(x) && x.nota > 0).sort(porNota).slice(0, nucleo.length ? 4 : 10)];
-  const daTarefa = pags.filter((x) => x.mente !== "dono" && x.nota > 0 && (todasMentes || mentes.has(x.mente) || x.tambem.some((t) => mentes.has(t)))).sort(porNota).slice(0, todasMentes ? 10 : 6);
+  const doDono = pags.filter((x) => x.mente === "dono" && !nucleo.includes(x));
+  const daMente = pags.filter((x) => x.mente !== "dono" && (todasMentes || mentes.has(x.mente) || x.tambem.some((t) => mentes.has(t))));
+  const dono = [...nucleo, ...(temSentido ? fundir(doDono) : doDono.filter((x) => x.nota > 0).sort(porNota)).slice(0, nucleo.length ? 4 : 10)];
+  const daTarefa = (temSentido ? fundir(daMente) : daMente.filter((x) => x.nota > 0).sort(porNota)).slice(0, todasMentes ? 10 : 6);
   if (!dono.length && !daTarefa.length) return null;
   const nomeM = Object.fromEntries(mentesDef().map((x) => [x.id, x.icone + " " + x.nome]));
   const texto = [
@@ -116,8 +135,69 @@ export function montarRomaneio(task, { todasMentes = false, ate = null } = {}) {
   ].join("\n");
   return {
     em: now(), mentes: [...mentes], termos: termos.length, tokensAprox: Math.round(texto.length / 4), texto,
-    itens: [...dono, ...daTarefa].map((x) => ({ chave: x.chave, titulo: x.p.titulo, mente: x.mente, nota: Number(x.nota.toFixed(2)) })),
+    modo: temSentido ? "palavra+sentido" : "palavra", ...(sentido && sentido.erro ? { semSentido: sentido.erro } : {}),
+    itens: [...dono, ...daTarefa].map((x) => ({ chave: x.chave, titulo: x.p.titulo, mente: x.mente, nota: Number(x.nota.toFixed(2)),
+      ...(temSentido && x.sim != null ? { sentido: Number(x.sim.toFixed(3)) } : {}) })),
   };
+}
+
+// O índice de sentido fica pronto sem esperar a 1ª tarefa: ao subir e a cada 10 min (só o que mudou é recalculado).
+if (COM_ROTINAS) {
+  setTimeout(() => indexarMemoria(paginasParaSentido()), 20000);
+  setInterval(() => indexarMemoria(paginasParaSentido()), 10 * 60000);
+}
+// ── Curva de giro (27/09): por onde cada memória passou ────────────────────────────────────────────────────
+// Num armazém, perto da doca fica o que MAIS SAI, não o que chegou por último. Aqui "sair" = ir no romaneio de uma tarefa
+// (task.romaneio.itens). Para cada memória: quantas tarefas a levaram, a última vez, e como essas tarefas foram na
+// conferência — de primeira (revisor e QA aprovaram sem conserto), depois de conserto, reprovadas/erro, ou sem conferência
+// (tarefa que não mexeu em arquivo). ⚠️ Mostra por onde a memória passou; NÃO prova que ela ajudou (a tela diz isso).
+export function resultadoDaConferencia(t) {
+  if (t.status === "erro") return "falhou";
+  const v = [t.revisor, t.qa].filter(Boolean);
+  if (!v.length) return ["executada", "concluida"].includes(t.status) ? "semConferencia" : null; // ainda na fila/rodando: não conta
+  if (v.some((x) => x.veredito !== "APROVADO")) return "falhou";
+  return v.some((x) => (x.rodadas || 0) > 0) ? "conserto" : "primeira";
+}
+export function giroDaMemoria() {
+  const giro = {}; let desde = null;
+  for (const t of state.tasks) {
+    const itens = t.romaneio?.itens; if (!Array.isArray(itens) || !itens.length) continue;
+    const quando = t.romaneio.em || t.startedAt || t.createdAt; if (!desde || quando < desde) desde = quando;
+    const r = resultadoDaConferencia(t);
+    for (const i of itens) {
+      const g = giro[i.chave] ||= { saidas: 0, ultima: null, primeira: 0, conserto: 0, falhou: 0, semConferencia: 0, tarefas: [] };
+      g.saidas++; if (!g.ultima || quando > g.ultima) g.ultima = quando;
+      if (r) g[r]++;
+      g.tarefas.push({ id: t.id, titulo: t.title, resultado: r || "andando", em: quando });
+    }
+  }
+  for (const g of Object.values(giro)) g.tarefas = g.tarefas.sort((a, b) => String(b.em).localeCompare(String(a.em))).slice(0, 20);
+  return { desde, giro };
+}
+
+/** O texto de cada memória para o índice de sentido (título + descrição + começo do corpo). */
+export function paginasParaSentido() {
+  const g = montarGrafo(); if (!g._porChave) return [];
+  return [...g._porChave.values()].filter((p) => !p.sessao && !/^(log-\d{4}-\d{2}|index|MEMORY)$/.test(p.id))
+    .map((p) => ({ chave: p.chave, texto: `${p.titulo}\n${p.descricao}\n${tiraCabecalhos(p.bruto).slice(0, 1500)}` }));
+}
+/**
+ * O sentido do pedido para o romaneio: vetor do pedido + vetores das memórias. Nunca segura a tarefa: o índice das memórias
+ * é posto em dia em segundo plano (a 1ª vez leva ~1 min) e, se o provedor não responder, o romaneio vai só por palavra
+ * — e diz isso (`semSentido`).
+ */
+export async function sentidoDoPedido(task) {
+  if (configBusca().provedor === "lexico") return { erro: "o board está configurado para buscar só por palavra (BOARD_BUSCA_PROVEDOR=lexico)" };
+  try {
+    const paginas = paginasParaSentido();
+    indexarMemoria(paginas).then((r) => { if (r.erro) console.error("índice de sentido da memória:", r.erro); });
+    const vetores = vetoresDaMemoria();
+    // Índice pela metade compara o pedido com só uma parte da memória e ainda diz "palavra+sentido" — engana (visto no ar
+    // em 27/09: com 32 de ~350 vetores, o romaneio trouxe memórias erradas). Abaixo de 95% pronto, vai só por palavra.
+    const prontas = paginas.filter((p) => vetores[p.chave]).length;
+    if (!paginas.length || prontas < paginas.length * 0.95) return { erro: `índice de sentido ainda sendo montado (${prontas} de ${paginas.length})` };
+    return { vetorPedido: await vetorDoPedido(task.title + "\n" + task.text), vetores };
+  } catch (e) { return { erro: e.message }; }
 }
 
 // ── Inventário da memória (o inventário do galpão) ─────────────────────────────────────────────────────

@@ -110,7 +110,7 @@ async function abrirPaginaDaMemoria(chave, centralizar) {
     const lista = (titulo, itens) => itens.length ? '<div class="grafo-lig"><b>' + titulo + ' (' + itens.length + ')</b>' + itens.map((i) => '<button data-chave="' + esc(i.chave) + '">' + esc(i.titulo) + '</button>').join('') + '</div>' : '';
     box.innerHTML = '<span class="grafo-chip"><i style="background:' + GE.cor[p.projeto] + '"></i>' + esc(p.projeto) + '</span><h3>' + esc(p.titulo) + '</h3>'
       + (p.descricao ? '<p class="grafo-desc">' + esc(p.descricao) + '</p>' : '') + '<div class="md">' + comLinksDaMemoria(p.texto) + '</div>'
-      + lista('Liga para', p.liga) + lista('Citada por', p.citadaPor);
+      + lista('Liga para', p.liga) + lista('Citada por', p.citadaPor) + giroHtml((GE.dados.nos || []).find((x) => x.chave === chave));
     box.querySelectorAll('[data-chave]').forEach((b) => { b.onclick = () => abrirPaginaDaMemoria(b.dataset.chave, true); });
     box.querySelectorAll('[data-alvo]').forEach((b) => { b.onclick = () => { const k = achaNoDaMemoria(b.dataset.alvo, p.projeto); if (k) abrirPaginaDaMemoria(k, true); }; });
   } catch (e) { box.innerHTML = '<div class="docker-vazio">' + esc(e.message) + '</div>'; }
@@ -122,7 +122,8 @@ async function renderMemoria() {
     + '<div class="grafo-corpo"><div class="grafo-canvas" id="grafoArea"><canvas id="grafoCanvas" aria-label="Grafo das páginas da memória"></canvas></div><div class="galpao" id="galpao" hidden></div>'
     + '<aside class="grafo-pagina" id="grafoPagina"><div class="docker-vazio">Clique num ponto para ler a página. Arraste para mover; a roda do mouse aproxima.</div></aside></div>'
     + '<div class="network-footer"><span id="grafoFonte">fonte: ai-memory no Saturno</span><span>só para ver · para mudar a memória, peça a um agente</span></div></section>';
-  let d; try { d = await api('/memoria/grafo'); } catch (e) { $('#grafoInfo').textContent = 'Não consegui ler a memória'; return; }
+  let d; try { d = await api('/memoria/grafo'); } catch (e) { if (el.isConnected) $('#grafoInfo').textContent = 'Não consegui ler a memória'; return; }
+  if (!el.isConnected) return; // o dono já foi para outra tela enquanto o grafo carregava
   if (d.erro) { $('#grafoInfo').textContent = d.erro; return; }
   const cv = $('#grafoCanvas'); if (!cv) return;
   const novo = !GE.dados || GE.dados.geradoEm !== d.geradoEm;
@@ -177,6 +178,20 @@ function mostrarModoMemoria() {
 // Tudo vem do grafo que já existe: nenhum número aqui é inventado.
 const TIPOS_GALPAO = [['projeto','Fatos do projeto'],['regra','Regras e lições'],['decisao','Decisões'],['dono','Sobre o dono'],['referencia','Referências'],['sessao','Sessões'],['outro','Sem tipo']];
 function idadeGalpao(iso) { const d = (Date.now() - Date.parse(iso)) / 86400000; return d < 1 ? 'g0' : d < 7 ? 'g1' : d < 30 ? 'g2' : d < 90 ? 'g3' : 'g4'; }
+// Curva de giro: a cor diz quantas tarefas levaram a memória (mesma paleta da idade: claro = mais perto da doca).
+function giroGalpao(n) { const s = (n.giro || {}).saidas || 0; return s >= 10 ? 'g0' : s >= 3 ? 'g1' : s >= 1 ? 'g2' : 'g4'; }
+const RESULTADO_GIRO = { primeira: 'passou de primeira', conserto: 'passou depois de conserto', falhou: 'reprovada ou com erro', semConferencia: 'sem conferência', andando: 'ainda andando' };
+/** Por onde a memória passou: as tarefas que a levaram e como cada uma foi. Mostra o caminho, não prova que ajudou. */
+function giroHtml(n) {
+  const desde = GE.dados && GE.dados.giroDesde; if (!desde || !n) return '';
+  const g = n.giro, dia = (iso) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  if (!g) return `<div class="grafo-lig giro"><b>📦 Giro</b><small class="giro-nota">não foi a nenhuma tarefa desde ${dia(desde)}, quando o romaneio começou</small></div>`;
+  const PLURAL = { primeira: 'passaram de primeira', conserto: 'passaram depois de conserto', falhou: 'reprovadas ou com erro', semConferencia: 'sem conferência' };
+  const partes = [['primeira', g.primeira], ['conserto', g.conserto], ['falhou', g.falhou], ['semConferencia', g.semConferencia]].filter(([, x]) => x).map(([k, x]) => `${x} ${x > 1 ? PLURAL[k] : RESULTADO_GIRO[k]}`).join(' · ');
+  return `<div class="grafo-lig giro"><b>📦 Saiu em ${g.saidas} tarefa${g.saidas > 1 ? 's' : ''} · última em ${dia(g.ultima)}</b>`
+    + `<small class="giro-nota">${esc(partes)}${partes ? '. ' : ''}Mostra por onde a memória passou — não prova que ela ajudou.</small>`
+    + g.tarefas.map((t) => `<button onclick="location.hash='#/t/${t.id}'">#${t.id} ${esc(cutTxt(t.titulo, 60))} · ${esc(RESULTADO_GIRO[t.resultado] || '')}</button>`).join('') + '</div>';
+}
 // Revisão do endereçamento: as memórias com confiança média/baixa, a mente proposta e o motivo. O dono confere (✓)
 // ou move para outra mente; só depois de todas conferidas o botão Aprovar aparece. Tudo grava em data/mentes.json.
 function revisaoDasMentes() {
@@ -256,6 +271,8 @@ function ligarInventario(el) {
 function desenharGalpao() {
   const el = $('#galpao'); if (!el || !GE.dados) return;
   GE.pp = GE.pp || store.get('galpaoPP', 'tipo');
+  GE.nivel = GE.nivel || store.get('galpaoNivel', 'idade');
+  const porGiro = GE.nivel === 'giro' && !!GE.dados.giroDesde;
   const todos = GE.dados.nos.filter((n) => !GE.fora.has(n.projeto));
   const ruas = {}; for (const n of todos) (ruas[n.projeto] = ruas[n.projeto] || []).push(n);
   const ordem = Object.keys(ruas).sort((a, b) => (a === '_global' ? -1 : b === '_global' ? 1 : ruas[b].length - ruas[a].length));
@@ -266,8 +283,11 @@ function desenharGalpao() {
   let html = `<div class="gp-pp"><span>Porta-palete por</span><div class="gp-modo"><button data-pp="tipo" class="${porM ? '' : 'on'}">Tipo</button><button data-pp="mente" class="${porM ? 'on' : ''}" ${M.existe ? '' : 'disabled title="ainda não há endereçamento"'}>Mente</button></div>${M.existe ? `<span class="gp-status" data-st="${M.status}">${M.status === 'aprovada' ? '✓ endereçamento aprovado' : 'endereçamento PROPOSTO · ' + M.aRevisar + ' para conferir'}</span>` : ''}</div>`
     + inventarioHtml()
     + (porM ? revisaoDasMentes() : '')
-    + `<div class="gp-kpis"><div><b>${ordem.length}</b><span>ruas (projetos)</span></div><div><b>${todos.length}</b><span>posições ocupadas</span></div><div><b>${semana}</b><span>mexidas nos últimos 7 dias</span></div>${achadas != null ? `<div><b>${achadas}</b><span>localizadas na busca</span></div>` : ''}</div>
-    <div class="gp-legenda"><span><i class="gp-p g0"></i>hoje</span><span><i class="gp-p g1"></i>7 dias</span><span><i class="gp-p g2"></i>30 dias</span><span><i class="gp-p g3"></i>90 dias</span><span><i class="gp-p g4"></i>mais antiga</span><span class="gp-nota">${porM ? 'porta-palete = MENTE' : 'porta-palete = TIPO da memória'} · cor = última edição (ou a entrada na memória) · nível 1 = a mais recente, perto da doca · endereço R-P-N-P</span></div>`;
+    + (GE.dados.giroDesde ? `<div class="gp-pp"><span>Nível por</span><div class="gp-modo"><button data-nivel="idade" class="${porGiro ? '' : 'on'}">Idade</button><button data-nivel="giro" class="${porGiro ? 'on' : ''}" title="o que mais sai nas tarefas fica perto da doca">Giro</button></div></div>` : '')
+    + `<div class="gp-kpis"><div><b>${ordem.length}</b><span>ruas (projetos)</span></div><div><b>${todos.length}</b><span>posições ocupadas</span></div><div><b>${semana}</b><span>mexidas nos últimos 7 dias</span></div>${GE.dados.giroDesde ? `<div><b>${todos.filter((n) => !n.giro && !n.sessao).length}</b><span>nunca foram a uma tarefa (desde ${new Date(GE.dados.giroDesde).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})</span></div>` : ''}${achadas != null ? `<div><b>${achadas}</b><span>localizadas na busca</span></div>` : ''}</div>
+    <div class="gp-legenda">${porGiro
+      ? '<span><i class="gp-p g0"></i>10+ tarefas</span><span><i class="gp-p g1"></i>3 a 9</span><span><i class="gp-p g2"></i>1 ou 2</span><span><i class="gp-p g4"></i>nunca saiu</span>'
+      : '<span><i class="gp-p g0"></i>hoje</span><span><i class="gp-p g1"></i>7 dias</span><span><i class="gp-p g2"></i>30 dias</span><span><i class="gp-p g3"></i>90 dias</span><span><i class="gp-p g4"></i>mais antiga</span>'}<span class="gp-nota">${porM ? 'porta-palete = MENTE' : 'porta-palete = TIPO da memória'} · ${porGiro ? 'cor = em quantas tarefas ela saiu · nível 1 = a que MAIS sai, perto da doca' : 'cor = última edição (ou a entrada na memória) · nível 1 = a mais recente, perto da doca'} · endereço R-P-N-P</span></div>`;
   ordem.forEach((proj, ri) => {
     const lista = ruas[proj];
     html += `<section class="gp-rua${proj === '_global' ? ' gp-comum' : ''}"><div class="gp-rua-cab"><span class="gp-rua-n">RUA ${String(ri + 1).padStart(2, '0')}</span><b>${esc(proj === '_global' ? 'Área comum' : proj)}</b><small>${proj === '_global' ? '_global · vale para todos os projetos · ' : ''}${lista.length} posições</small></div><div class="gp-predios">`;
@@ -275,7 +295,8 @@ function desenharGalpao() {
     const porMente = GE.pp === 'mente' && GE.dados.mentes && GE.dados.mentes.existe;
     const grupos = porMente ? GE.dados.mentes.mentes.map((m) => [m.id, m.icone + ' ' + m.nome]) : TIPOS_GALPAO;
     for (const [tipo, nome] of grupos) {
-      const itens = lista.filter((n) => (porMente ? (n.mente || 'triagem') : (n.tipo || 'outro')) === tipo).sort((a, b) => b.atualizada.localeCompare(a.atualizada));
+      const itens = lista.filter((n) => (porMente ? (n.mente || 'triagem') : (n.tipo || 'outro')) === tipo)
+        .sort((a, b) => (porGiro ? ((b.giro || {}).saidas || 0) - ((a.giro || {}).saidas || 0) : 0) || b.atualizada.localeCompare(a.atualizada));
       if (!itens.length) continue;
       pi++;
       const cols = Math.max(4, Math.min(22, Math.ceil(Math.sqrt(itens.length * 2.2))));
@@ -287,7 +308,7 @@ function desenharGalpao() {
           const n = itens[(nv - 1) * cols + (c - 1)];
           if (!n) { cel += '<i class="gp-p gp-vazia"></i>'; continue; }
           const end = `R${String(ri + 1).padStart(2, '0')}-P${String(pi).padStart(2, '0')}-N${nv}-${String(c).padStart(2, '0')}`;
-          cel += `<button class="gp-p ${idadeGalpao(n.atualizada)}${acesa(n) ? '' : ' gp-apagada'}${GE.sel === n.chave ? ' gp-sel' : ''}" data-chave="${esc(n.chave)}" data-end="${end}" title="${esc(end + ' · ' + n.titulo)}"></button>`;
+          cel += `<button class="gp-p ${porGiro ? giroGalpao(n) : idadeGalpao(n.atualizada)}${acesa(n) ? '' : ' gp-apagada'}${GE.sel === n.chave ? ' gp-sel' : ''}" data-chave="${esc(n.chave)}" data-end="${end}" title="${esc(end + ' · ' + n.titulo + (porGiro ? ' · ' + (n.giro ? `saiu em ${n.giro.saidas} tarefa(s)` : 'nunca saiu') : ''))}"></button>`;
         }
         linhas += `<div class="gp-nivel"><span class="gp-nv">N${nv}</span><div class="gp-pos">${cel}</div></div>`;
       }
@@ -297,6 +318,7 @@ function desenharGalpao() {
   });
   el.innerHTML = html || '<div class="docker-vazio">nenhuma rua visível</div>';
   el.querySelectorAll('[data-pp]').forEach((b) => { b.onclick = () => { GE.pp = b.dataset.pp; store.set('galpaoPP', GE.pp); desenharGalpao(); }; });
+  el.querySelectorAll('[data-nivel]').forEach((b) => { b.onclick = () => { GE.nivel = b.dataset.nivel; store.set('galpaoNivel', GE.nivel); desenharGalpao(); }; });
   ligarRevisaoDasMentes(el);
   ligarInventario(el);
   el.querySelectorAll('.gp-p[data-chave]').forEach((b) => { b.onclick = async () => {

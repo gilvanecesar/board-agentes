@@ -9,7 +9,7 @@ import { ANEXOS, C, MODEL, MOTOR_PADRAO, MOTOR_QA, MOTOR_REVISOR, PARALLEL, PAUS
 import { broadcast, clients, logEvent, logPath, readLog, running, save, state, taskById, titleOf } from "./estado.mjs";
 import { listProjects, projectOf } from "./projetos.mjs";
 import { INFRA, atualizarCofreObsidian, envMemoria, execP, lerInfra } from "./infra.mjs";
-import { apagarDaMemoria, caminhoNoProjeto, gravarInventario, gravarMentes, inventariar, lerInventario, lerMentes, mentePorProjeto, mentesDef, montarGrafo, montarRomaneio, pistasDaMente, resumoMentes, semAcentoServidor, tiraCabecalhos } from "./memoria.mjs";
+import { apagarDaMemoria, caminhoNoProjeto, gravarInventario, gravarMentes, inventariar, lerInventario, lerMentes, mentePorProjeto, mentesDef, giroDaMemoria, montarGrafo, montarRomaneio, pistasDaMente, resumoMentes, semAcentoServidor, sentidoDoPedido, tiraCabecalhos } from "./memoria.mjs";
 import { CONTROLE, lerControle } from "./controle.mjs";
 import { MOTORES, catalogoModelos, motoresDisponiveis, temBin } from "./motores.mjs";
 import { chatTask, deployCommand, gateCommand } from "./esteira.mjs";
@@ -143,7 +143,9 @@ export const server = createServer(async (req, res) => {
     if (req.method === "GET" && path === "/api/memoria/grafo") {
       const g = montarGrafo(); const mapa = (lerMentes() || {}).mapa || {};
       const nos = g.nos.map((n) => mapa[n.chave] ? { ...n, mente: mapa[n.chave].mente, mentesTambem: mapa[n.chave].tambem || [], menteConfianca: mapa[n.chave].confianca, menteMotivo: mapa[n.chave].motivo } : n);
-      return json(res, 200, { geradoEm: g.geradoEm, erro: g.erro || null, nos, ligacoes: g.ligacoes, mentes: resumoMentes(lerMentes()) });
+      const { desde, giro } = giroDaMemoria();
+      for (const n of nos) if (giro[n.chave]) n.giro = giro[n.chave];
+      return json(res, 200, { geradoEm: g.geradoEm, erro: g.erro || null, nos, ligacoes: g.ligacoes, mentes: resumoMentes(lerMentes()), giroDesde: desde });
     }
     if (req.method === "GET" && path === "/api/memoria/pagina") {
       // Só por chave que o próprio grafo conhece: nada de caminho vindo da tela.
@@ -159,7 +161,9 @@ export const server = createServer(async (req, res) => {
     if (req.method === "GET" && path === "/api/romaneio/previa") {
       const texto = String(url.searchParams.get("texto") || "").slice(0, 4000);
       if (!texto.trim()) return json(res, 400, { error: "escreva o pedido" });
-      const rom = montarRomaneio({ title: titleOf(texto), text: texto, project: String(url.searchParams.get("projeto") || "DEV") }, { todasMentes: url.searchParams.has("todas"), ate: url.searchParams.get("ate") || null });
+      const pedido = { title: titleOf(texto), text: texto, project: String(url.searchParams.get("projeto") || "DEV") };
+      const sentido = url.searchParams.get("modo") === "palavra" ? null : await sentidoDoPedido(pedido);
+      const rom = montarRomaneio(pedido, { todasMentes: url.searchParams.has("todas"), ate: url.searchParams.get("ate") || null, sentido });
       return json(res, 200, rom || { vazio: true, motivo: (lerMentes() || {}).status !== "aprovada" ? "endereçamento não aprovado" : "nada relacionado" });
     }
     // ── Inventário da memória: ver, rodar, endereçar novas, descartar, juntar (só com clique do dono) ──

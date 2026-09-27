@@ -130,7 +130,9 @@ o máximo que dá para dizer.
 
 **Conclusão das três medições:** não há prova de que o romaneio economize, e o núcleo fixo custa caro em tarefa pequena.
 O romaneio pode ser desligado (`BOARD_ROMANEIO=0`) ou usado sem núcleo (deixe `nucleoDono` vazio no `mentes.json`).
-O próximo passo é a separação por sentido (embeddings), não por palavra.
+Desde então o romaneio separa também **por sentido** (embeddings no ollama local, `bge-m3`): numa memória real, com
+10 pedidos escritos com outras palavras, achou a memória certa em 8/10, contra 5/10 só por palavra. Detalhes em
+[docs/MEMORIA.md](docs/MEMORIA.md).
 
 ---
 
@@ -164,7 +166,7 @@ O board **abre e roda tarefas** só com o primeiro grupo. Os outros ligam partes
 
 | Ferramenta | O que liga |
 |---|---|
-| `ollama` com `nomic-embed-text` | busca de tarefas por sentido. Sem ele, a busca é por palavra, e a tela avisa |
+| `ollama` com `bge-m3` | busca de tarefas e romaneio por sentido (`ollama pull bge-m3`). Sem ele, vai por palavra, e a tela avisa |
 
 ### 2. Onde colocar
 
@@ -298,10 +300,11 @@ Verde, vermelho ou cinza (sem leitura). *(Neste print, os nomes dos bancos foram
 | `busca.mjs` | busca de tarefas por sentido (embeddings), com recuo para busca por palavra |
 | `board.sh` | mantém o servidor no ar; o reinício pedido pela tela sai com código 75 e volta em 1 s |
 | `memoria/` | a montagem da memória compartilhada: servidor, backup, reserva e espelho |
-| `test/` | 98 testes (`npm test`, ~50 s, só `node:test`): as funções que decidem sozinhas, o board inteiro numa caixa isolada com `claude`, `codex`, `agy` e `opencode` falsos que falam o formato real de cada um (inclusive a troca de motor quando a cota acaba), e a tela num Chrome sem janela — sem agente de verdade, sem custo |
+| `test/` | 145 testes (`npm test`, ~50 s, só `node:test`): as funções que decidem sozinhas, o board inteiro numa caixa isolada com `claude`, `codex`, `agy`, `opencode`, `ai-memory`, `ssh`, `rclone` e `docker` falsos que falam o formato real de cada um, e a tela num Chrome sem janela — sem agente de verdade, sem custo. Cobertura medida: 95% das funções do servidor e 94% das da tela |
 
-**Os testes mordem:** 27 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
-do dono, portão ignorado, HTML do agente executando na tela, Codex retomando com o sandbox errado…) e os 27 reprovaram. O GitHub roda a bateria em todo PR.
+**Os testes mordem:** 61 defeitos plantados de propósito (veredito que aprova sem veredito, produção rodando na pasta
+do dono, portão ignorado, HTML do agente executando na tela, memória apagada sem confirmação, backup manual contado como
+automático…) e os 61 reprovaram. O GitHub roda a bateria em todo PR.
 **Reorganizar sem mudar nada:** `npm run fotografia` grava o conteúdo e o estilo de 32 telas e 19 rotas, com dados fixos e
 relógio parado; antes e depois de mexer, as duas têm de sair idênticas.
 

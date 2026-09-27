@@ -96,6 +96,14 @@ export function montarDemo(dev, memoria, data) {
       revisor: ok ? { veredito: "APROVADO", rodadas: 0, em: criada } : null, qa: ok ? { veredito: "APROVADO", rodadas: 0, em: criada } : null,
       prUrl: ok && entrega === "pr" ? `https://github.com/exemplo/${project}/pull/${40 + id}` : null, anexos: [], tokens: 0 };
   });
+  // the picking list some tasks carried (the Galpão's turnover reads task.romaneio.itens)
+  const rom = (id, chaves) => { const t = tasks.find((x) => x.id === id); t.romaneio = { em: t.startedAt, mentes: ["financeiro"], tokensAprox: 1640,
+    itens: chaves.map((c) => ({ chave: c, titulo: c.split("/")[1], mente: mapa[c].mente, nota: 1 })) }; };
+  rom(12, ["api-pagamentos/pix-webhook-idempotente", "api-pagamentos/chave-idempotencia", "_global/respostas-curtas"]);
+  rom(8, ["api-pagamentos/conciliacao-diaria", "api-pagamentos/dinheiro-em-centavos", "_global/respostas-curtas"]);
+  rom(4, ["api-pagamentos/idor-pedidos", "_global/rate-limit-ip-real", "_global/respostas-curtas"]);
+  rom(9, ["loja-online/cupom-nao-acumula", "_global/respostas-curtas"]);
+  tasks.find((x) => x.id === 9).revisor = { veredito: "APROVADO", rodadas: 1, em: tasks.find((x) => x.id === 9).createdAt };
   // one task in each remaining state the screens know: queued, error with retry, running is not seeded (the runner would take it)
   tasks.push({ ...tasks[9], id: 13, text: "Página de rastreio do pedido com o mapa da entrega.", title: "Página de rastreio do pedido com o mapa da entrega.", status: "fila", order: 12 });
   tasks.push({ ...tasks[9], id: 14, text: "Exportar pedidos do mês em CSV.", title: "Exportar pedidos do mês em CSV.", status: "erro", order: 13, error: "o portão reprovou (npm run check && npm test)", tentativas: 2, retentativa: null, startedAt: dia(1), finishedAt: dia(1) });

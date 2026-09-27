@@ -36,8 +36,11 @@ const TIMEOUT_MS = Number(process.env.BOARD_BUSCA_TIMEOUT_S || 25) * 1000;
 const PERTO = Math.min(0.99, Math.max(0.1, Number(process.env.BOARD_BUSCA_PERTO || 0.75))); // quão perto do melhor achado ainda conta
 const LOTE = 32; // textos por requisição
 
+// ollama: bge-m3 (multilíngue). Medido em 27/09/2026 na memória real (330 páginas), com 10 pedidos escritos com OUTRAS
+// palavras: nomic-embed-text acertou entre os 5 primeiros 3/10 (pior que a busca por palavra, 4/10); bge-m3, 8/10.
+// O nomic é treinado quase só em inglês — em português ele não separa o que tem a ver do que não tem.
 const MODELO_PADRAO = {
-  ollama: "nomic-embed-text",
+  ollama: "bge-m3",
   openai: "text-embedding-3-small",
   cohere: "embed-multilingual-v3.0",
   lexico: "",
@@ -216,6 +219,54 @@ function buscaLexica(consulta, tarefas) {
  * `modo` conta a verdade pra tela: "semantica" (embeddings) ou "lexico" (o socorro), com o
  * `aviso` explicando por que caiu no socorro — a tela nunca finge que houve IA quando não houve.
  */
+// ── o SENTIDO das memórias (o romaneio) ──────────────────────────────────────
+// Mesmo provedor e modelo da busca; índice próprio em data/embeddings-memoria.json, chaveado pela chave da página e pelo
+// hash do texto — só o que mudou é recalculado. A 1ª vez leva ~1 min para 300 páginas; depois, segundos.
+const INDEX_MEMORIA = join(DATA, "embeddings-memoria.json");
+function lerIndiceMemoria() {
+  try {
+    const d = JSON.parse(readFileSync(INDEX_MEMORIA, "utf8"));
+    if (d.provedor !== PROVEDOR || d.modelo !== MODELO) return vazio();
+    return { ...vazio(), ...d, itens: d.itens || {} };
+  } catch { return vazio(); }
+}
+let indexandoMemoria = null;
+/** Põe o índice das memórias em dia. `paginas` = [{ chave, texto }]. Uma indexação por vez. */
+export function indexarMemoria(paginas) {
+  if (indexandoMemoria) return indexandoMemoria;
+  const esta = (async () => {
+    const idx = lerIndiceMemoria();
+    const vivas = new Set(paginas.map((p) => p.chave));
+    for (const k of Object.keys(idx.itens)) if (!vivas.has(k)) delete idx.itens[k];
+    const faltam = paginas.filter((p) => idx.itens[p.chave]?.hash !== hashDe(p.texto));
+    try {
+      for (let i = 0; i < faltam.length; i += LOTE) {
+        const parte = faltam.slice(i, i + LOTE);
+        const v = await embed(parte.map((p) => p.texto));
+        parte.forEach((p, j) => { idx.itens[p.chave] = { hash: hashDe(p.texto), v: v[j] }; });
+        idx.atualizadoEm = new Date().toISOString();
+        if (!existsSync(DATA)) mkdirSync(DATA, { recursive: true });
+        writeFileSync(INDEX_MEMORIA + ".tmp", JSON.stringify(idx)); renameSync(INDEX_MEMORIA + ".tmp", INDEX_MEMORIA);
+      }
+      return { novos: faltam.length, total: Object.keys(idx.itens).length, erro: null };
+    } catch (e) { return { novos: 0, total: Object.keys(idx.itens).length, erro: e.message }; }
+  })();
+  // A trava solta DEPOIS de gravada: com nada a indexar a função termina na hora, e um `finally` lá dentro rodava antes
+  // da atribuição — a trava ficava presa para sempre e nenhuma memória nova era indexada até reiniciar (achado em 27/09).
+  indexandoMemoria = esta;
+  esta.finally(() => { if (indexandoMemoria === esta) indexandoMemoria = null; });
+  return esta;
+}
+/** Os vetores já calculados das memórias: { chave: vetor }. */
+export function vetoresDaMemoria() { return Object.fromEntries(Object.entries(lerIndiceMemoria().itens).map(([k, x]) => [k, x.v])); }
+/** O vetor de um pedido, com prazo curto (o romaneio não pode segurar a tarefa esperando o provedor). */
+export async function vetorDoPedido(texto, prazoMs = 8000) {
+  if (PROVEDOR === "lexico") throw new Error("busca configurada só por palavra (BOARD_BUSCA_PROVEDOR=lexico)");
+  let t; const limite = new Promise((_, bad) => { t = setTimeout(() => bad(new Error(`${PROVEDOR} demorou mais de ${prazoMs / 1000}s`)), prazoMs); });
+  try { return (await Promise.race([embed([String(texto).slice(0, 4000)], "consulta"), limite]))[0]; } finally { clearTimeout(t); }
+}
+export { escalar as parecenca };
+
 export async function buscar(consulta, tarefas, { limite = 20, projeto = null, minimo = 0.15 } = {}) {
   const t0 = Date.now();
   const q = String(consulta || "").trim();

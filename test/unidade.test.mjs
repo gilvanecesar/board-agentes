@@ -218,6 +218,10 @@ describe("romaneio (o picking da memória)", () => {
     const r = B.montarRomaneio(tarefa("mostrar o detalhe da tarefa num drawer lateral"));
     assert.ok(r.itens.some((i) => i.chave === "_global/drawer-lateral"));
   });
+  test("memória do mesmo projeto SEM nenhuma palavra do pedido não entra só pelo bônus do projeto", () => {
+    const r = B.montarRomaneio(tarefa("corrigir a rejeição 686 no MDF-e"));
+    assert.ok(!r.itens.some((i) => /^demo\/nota-/.test(i.chave)), r.itens.map((i) => i.chave).join(", "));
+  });
   test("sem endereçamento aprovado, não há romaneio", () => {
     const arq = join(caixa.board, "data", "mentes.json"); const antes = readFileSync(arq, "utf8");
     writeFileSync(arq, JSON.stringify({ ...JSON.parse(antes), status: "proposta" }));
@@ -245,5 +249,20 @@ describe("idade real da memória", () => {
     assert.equal(B.tipoDaMemoria("/m/p/decisions/x.md", ""), "decisao");
     assert.equal(B.tipoDaMemoria("/m/p/sessions/x.md", ""), "sessao");
     assert.equal(B.tipoDaMemoria("/m/p/x.md", "  type: feedback\n"), "regra");
+  });
+});
+
+describe("curva de giro: como a tarefa foi na conferência", () => {
+  const t = (status, revisor, qa) => ({ status, revisor, qa });
+  const ap = (rodadas = 0) => ({ veredito: "APROVADO", rodadas });
+  test("aprovada por revisor e QA sem conserto = de primeira", () => assert.equal(B.resultadoDaConferencia(t("executada", ap(), ap())), "primeira"));
+  test("aprovada depois de conserto", () => assert.equal(B.resultadoDaConferencia(t("concluida", ap(1), ap())), "conserto"));
+  test("reprovada ou em erro = falhou", () => {
+    assert.equal(B.resultadoDaConferencia(t("executada", { veredito: "REPROVADO", rodadas: 1 }, null)), "falhou");
+    assert.equal(B.resultadoDaConferencia(t("erro", ap(), null)), "falhou");
+  });
+  test("executada sem mexer em arquivo = sem conferência; ainda andando não conta", () => {
+    assert.equal(B.resultadoDaConferencia(t("executada", null, null)), "semConferencia");
+    assert.equal(B.resultadoDaConferencia(t("rodando", null, null)), null);
   });
 });
