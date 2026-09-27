@@ -123,23 +123,23 @@ test("tela: o menu lateral leva a cada lugar; ✓ ⏹ 🗑 na linha; Virar PR, p
   await ir("", { tab: "ativas" });
   for (const [chave, prova] of [["controle", `!!document.querySelector("#controle")`], ["consumo", `!!document.querySelector("#consumo")`], ["memoria", `!!document.querySelector("#memoria")`],
     ["monitoring", `!!document.querySelector("#monitoring")`], ["busca", `location.hash === "#/busca"`], ["conversa", `location.hash.startsWith("#/c/")`], ["board", `!!document.querySelector("#newTask")`]]) {
-    await nav.avaliar(`document.querySelector('.nav-item[onclick="navigateBoard(\\'${chave}\\')"]').click()`);
+    await espera(`(() => { const b = document.querySelector('.nav-item[onclick="navigateBoard(\\'${chave}\\')"]'); if (!b) return false; b.click(); return true; })()`);
     await espera(prova);
   }
   // linha: ✓ concluir, ⏹ parar, 🗑 excluir (com confirmação, porque tem sessão)
   const [ok1] = (await b.api("POST", "/api/tasks", { text: "rápida", project: "demo", queue: true })).json.tasks;
   await esperarStatus(b, ok1.id, "executada");
   await ir("", { tab: "executadas" });
-  await nav.avaliar(`document.querySelector('.task[data-id="${ok1.id}"] .chk').click()`);
+  await espera(`(() => { const b = document.querySelector('.task[data-id="${ok1.id}"] .chk'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, ok1.id)).status === "concluida");
   const [lenta] = (await b.api("POST", "/api/tasks", { text: "demora bastante", project: "demo", queue: true })).json.tasks;
   await ate(async () => (await tarefa(b, lenta.id)).status === "rodando");
   await ir("", { tab: "ativas" });
   await espera(`!!document.querySelector('.task[data-id="${lenta.id}"] button[title="Parar"]')`);
-  await nav.avaliar(`document.querySelector('.task[data-id="${lenta.id}"] button[title="Parar"]').click()`);
+  await espera(`(() => { const b = document.querySelector('.task[data-id="${lenta.id}"] button[title="Parar"]'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, lenta.id)).status === "pendente");
   await ir("", { tab: "concluidas" });
-  await nav.avaliar(`document.querySelector('.task[data-id="${ok1.id}"] .del').click()`);
+  await espera(`(() => { const b = document.querySelector('.task[data-id="${ok1.id}"] .del'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await b.api("GET", `/api/tasks/${ok1.id}`)).status === 404);
   assert.match(nav.dialogos.join("\n"), new RegExp(`Excluir a tarefa #${ok1.id}`), "pediu confirmação (tinha sessão)");
   // ficha: virar PR, passar o bastão, publicar sem e com comando, pausar a fila
@@ -147,15 +147,15 @@ test("tela: o menu lateral leva a cada lugar; ✓ ⏹ 🗑 na linha; Virar PR, p
   await esperarStatus(b, t.id, "executada");
   await b.api("POST", "/api/fila/pausar");
   await ir(`#/t/${t.id}`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => /Virar PR/.test(x.textContent)).click()`);
+  await espera(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /Virar PR/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, t.id)).acao === "pr");
   await b.api("PATCH", `/api/tasks/${t.id}`, { status: "executada" });
   await ir(`#/t/${t.id}`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => /Mesclar e publicar/.test(x.textContent)).click()`);
+  await espera(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /Mesclar e publicar/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   await espera(`document.body.innerText.includes("Publicação desligada para demo")`);
-  await nav.avaliar(`[...document.querySelectorAll("button")].find((x) => x.textContent.trim().startsWith("Codex")).click()`);
+  await espera(`(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim().startsWith("Codex")); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, t.id)).motor === "codex");
-  await nav.avaliar(`document.querySelector('[onclick="filaPausar(false)"]').click()`);
+  await espera(`(() => { const b = document.querySelector('[onclick="filaPausar(false)"]'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => !(await b.api("GET", "/api/state")).json.config.filaPausada);
   assert.deepEqual(nav.erros, []);
 });
