@@ -277,7 +277,10 @@ test("Board que caiu no meio do turno de outra sessão: ao subir, a marca sai e 
   b.cp.kill("SIGKILL");
   for (let i = 0; i < 30 && b.cp.exitCode === null && b.cp.signalCode === null; i++) await esperar(100);
   assert.equal(JSON.parse(readFileSync(join(caixa.board, "data", "board.json"), "utf8")).conversas.central.ouvindo, true, "a marca ficou no disco");
-  const n = await subirBoard(caixa); atual.push([n, caixa]);
+  // A caixa de entrada guarda a mensagem antiga: a Central, despertada ao subir, a leria de novo e abriria OUTRO turno
+  // (visto no CI do GitHub, mais lento). O que se prova aqui é a marca saindo ao subir.
+  writeFileSync(join(caixa.home, "inbox-central.jsonl"), "");
+  const n = await subirBoard(caixa, { BOARD_CENTRAL_DESPERTAR: "0" }); atual.push([n, caixa]);
   assert.equal((await n.api("GET", "/api/state")).json.conversas.central.ouvindo, false);
   const r = await n.api("POST", "/api/tela", { destino: "link https://exemplo.com/" });
   assert.equal(r.status, 409); assert.match(r.json.error, /ninguém está usando/, "recusa de não haver tela, não do turno");

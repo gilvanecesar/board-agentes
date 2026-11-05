@@ -5,6 +5,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { esperar } from "./ajuda.mjs";
 import { comChrome, esconder, espiarMic, micFechado, esperarEvento, esperarNaTela, ligada, limparVoz, preparar, recarregar, soar, tela } from "./voz-ajuda.mjs";
 
@@ -160,7 +161,9 @@ test("Tela: com duas abas do board só uma ouve e fala; clicar na outra passa o 
   } finally { await nav.fechar(); }
 });
 
-test("Tela: com o 🎤 ditado gravando a fala não vai à Central e a barra diz; sair da caixa encerra, o texto fica no rascunho e o modo volta a ouvir (4ª reprova da QA da #296)", comChrome, async () => {
+// O 🎤 ditado manda webm, e o servidor converte com o ffmpeg: sem ele (o runner do GitHub não tem), a transcrição falha.
+const SEM_FFMPEG = spawnSync("ffmpeg", ["-version"]).status !== 0;
+test("Tela: com o 🎤 ditado gravando a fala não vai à Central e a barra diz; sair da caixa encerra, o texto fica no rascunho e o modo volta a ouvir (4ª reprova da QA da #296)", { skip: comChrome.skip || (SEM_FFMPEG && "sem ffmpeg nesta máquina") }, async () => {
   const { b, caixa, ouvido } = await preparar();
   const nav = await tela(caixa, [[0, 60000]]);
   const quadros = (n) => `for (let i = 0; i < ${n}; i++) VOZ.no.port.onmessage({ data: new Float32Array(2400).fill(0.3) }); 1`; // o caminho do worklet, com a trava do ditado

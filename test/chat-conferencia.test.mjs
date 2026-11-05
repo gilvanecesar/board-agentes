@@ -38,7 +38,7 @@ test("conserto pelo chat numa tarefa reprovada: portão, revisor e QA rodam, sem
     agente: [{ texto: "fiz", escreve: { arquivo: "a.txt" } }, { texto: "consertei no chat", escreve: { arquivo: "b.txt" } }],
     revisor: ["APROVADO"], qa: ["REPROVADO\n- defeito", "APROVADO"] });
   writeFileSync(join(demo, "package.json"), JSON.stringify({ scripts: { test: "true" } }));
-  execFileSync("git", ["-C", demo, "add", "-A"]); execFileSync("git", ["-C", demo, "commit", "-qm", "scripts"]);
+  execFileSync("git", ["-C", demo, "add", "-A"]); execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-C", demo, "commit", "-qm", "scripts"]);
   const t = await reprovadaQa(b);
   assert.equal((await chat(b, t.id, "conserte o defeito")).status, 202);
   const fim = await esperarStatus(b, t.id, ["executada"], 20000);

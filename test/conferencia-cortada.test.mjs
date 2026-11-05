@@ -18,7 +18,7 @@ async function preparar(cenario, { env = {}, portao = null, antes = null } = {})
   const demo = join(caixa.dev, "demo");
   if (portao) { // portão de verdade: `npm test` do próprio projeto
     writeFileSync(join(demo, "package.json"), JSON.stringify({ scripts: { test: portao } }));
-    execFileSync("git", ["-C", demo, "add", "-A"]); execFileSync("git", ["-C", demo, "commit", "-qm", "scripts"]);
+    execFileSync("git", ["-C", demo, "add", "-A"]); execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-C", demo, "commit", "-qm", "scripts"]);
   }
   if (antes) antes(caixa);
   const b = await subirBoard(caixa, { ...VOLTA, ...env });
