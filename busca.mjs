@@ -34,7 +34,9 @@ const PROVEDOR = (process.env.BOARD_BUSCA_PROVEDOR || "ollama").toLowerCase();
 const OLLAMA_URL = (process.env.BOARD_OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
 const TIMEOUT_MS = Number(process.env.BOARD_BUSCA_TIMEOUT_S || 25) * 1000;
 const PERTO = Math.min(0.99, Math.max(0.1, Number(process.env.BOARD_BUSCA_PERTO || 0.75))); // quão perto do melhor achado ainda conta
-const LOTE = 32; // textos por requisição
+// Textos por requisição. Era 32, medido só com placa: na CPU (Atena, #270) um lote cheio levava de 11 a 25 s e estourava o
+// prazo, que vale para o pedido inteiro. O prazo não muda com a máquina; quem se ajusta é o lote (ver `embedLote`).
+const LOTE = 8;
 
 // ollama: bge-m3 (multilíngue). Medido em 27/09/2026 na memória real (330 páginas), com 10 pedidos escritos com OUTRAS
 // palavras: nomic-embed-text acertou entre os 5 primeiros 3/10 (pior que a busca por palavra, 4/10); bge-m3, 8/10.
@@ -66,7 +68,10 @@ async function pede(url, opts) {
   let r;
   // "fetch failed" não diz nada a quem lê na tela: o que importa é QUEM não respondeu.
   try { r = await fetch(url, { ...opts, signal: AbortSignal.timeout(TIMEOUT_MS) }); }
-  catch (e) { throw new Error(e.name === "TimeoutError" ? `${new URL(url).origin} demorou mais de ${TIMEOUT_MS / 1000}s` : `não consegui falar com ${new URL(url).origin}`); }
+  catch (e) {
+    if (e.name === "TimeoutError") throw Object.assign(new Error(`${new URL(url).origin} demorou mais de ${TIMEOUT_MS / 1000}s`), { demorou: true });
+    throw new Error(`não consegui falar com ${new URL(url).origin}`);
+  }
   const corpo = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(corpo.error?.message || corpo.error || corpo.message || `${url.replace(/\?.*/, "")} devolveu ${r.status}`);
   return corpo;
@@ -117,18 +122,26 @@ async function embedCohere(textos, tipo) {
   return v;
 }
 
-/** Vetores de uma lista de textos, em lotes. `tipo` = "documento" | "consulta" (o Cohere separa). */
-async function embed(textos, tipo = "documento") {
-  if (PROVEDOR === "lexico") throw new Error("provedor léxico não tem embeddings");
-  const out = [];
-  for (let i = 0; i < textos.length; i += LOTE) {
-    const parte = textos.slice(i, i + LOTE);
+/** Um lote. Estourou o prazo: máquina ocupada ou textos longos, então divide e tenta as metades; só um texto SOZINHO desiste. */
+async function embedLote(parte, tipo) {
+  try {
     const vetores = PROVEDOR === "openai" ? await embedOpenAI(parte)
       : PROVEDOR === "cohere" ? await embedCohere(parte, tipo)
         : await embedOllama(parte);
     if (vetores.length !== parte.length) throw new Error("o provedor devolveu menos vetores do que pedi");
-    out.push(...vetores.map(normalizar));
+    return vetores;
+  } catch (e) {
+    if (!e.demorou || parte.length < 2) throw e;
+    const meio = Math.ceil(parte.length / 2);
+    return [...await embedLote(parte.slice(0, meio), tipo), ...await embedLote(parte.slice(meio), tipo)];
   }
+}
+
+/** Vetores de uma lista de textos, em lotes. `tipo` = "documento" | "consulta" (o Cohere separa). */
+async function embed(textos, tipo = "documento") {
+  if (PROVEDOR === "lexico") throw new Error("provedor léxico não tem embeddings");
+  const out = [];
+  for (let i = 0; i < textos.length; i += LOTE) out.push(...(await embedLote(textos.slice(i, i + LOTE), tipo)).map(normalizar));
   return out;
 }
 
@@ -160,26 +173,40 @@ function gravarIndice(idx) {
 
 /**
  * Põe o índice em dia: calcula só as tarefas novas ou editadas e esquece as que sumiram do quadro.
- * Devolve o que fez (e o erro, quando o provedor não respondeu — quem chama decide o socorro).
+ * Devolve o que fez (e o erro, quando o provedor não respondeu — quem chama decide o socorro). Grava a cada lote: até a #270
+ * gravava só no fim, e um lote cortado perdia o que os outros já tinham calculado, para sempre recomeçando do zero.
+ * Uma indexação por vez: duas buscas juntas não calculam a mesma coisa, e a segunda só encontra o trabalho pronto.
  */
-export async function indexar(tarefas, { forcar = false } = {}) {
+let filaIndice = Promise.resolve();
+export function indexar(tarefas, opcoes = {}) {
+  const esta = filaIndice.then(() => indexarAgora(tarefas, opcoes));
+  filaIndice = esta.catch(() => {});
+  return esta;
+}
+async function indexarAgora(tarefas, { forcar = false } = {}) {
   const idx = forcar ? vazio() : lerIndice();
-  const vivos = new Set(tarefas.map((t) => String(t.id)));
-  for (const id of Object.keys(idx.itens)) if (!vivos.has(id)) delete idx.itens[id];
-
-  const faltam = tarefas.filter((t) => {
-    const item = idx.itens[String(t.id)];
-    return !item || item.hash !== hashDe(textoDaTarefa(t));
-  });
-  if (!faltam.length) { gravarIndice(idx); return { novos: 0, total: Object.keys(idx.itens).length, erro: null }; }
+  let novos = 0;
+  // Tudo no try, gravação inclusive: índice que não grava (disco, permissão) é erro de busca, nunca derruba o board.
   try {
-    const vetores = await embed(faltam.map(textoDaTarefa));
-    faltam.forEach((t, i) => { idx.itens[String(t.id)] = { hash: hashDe(textoDaTarefa(t)), v: vetores[i] }; });
-    idx.atualizadoEm = new Date().toISOString();
-    gravarIndice(idx);
-    return { novos: faltam.length, total: Object.keys(idx.itens).length, erro: null };
+    const vivos = new Set(tarefas.map((t) => String(t.id)));
+    for (const id of Object.keys(idx.itens)) if (!vivos.has(id)) delete idx.itens[id];
+
+    const faltam = tarefas.filter((t) => {
+      const item = idx.itens[String(t.id)];
+      return !item || item.hash !== hashDe(textoDaTarefa(t));
+    });
+    if (!faltam.length) gravarIndice(idx);
+    for (let i = 0; i < faltam.length; i += LOTE) {
+      const parte = faltam.slice(i, i + LOTE);
+      const vetores = await embed(parte.map(textoDaTarefa));
+      parte.forEach((t, j) => { idx.itens[String(t.id)] = { hash: hashDe(textoDaTarefa(t)), v: vetores[j] }; });
+      idx.atualizadoEm = new Date().toISOString();
+      gravarIndice(idx);
+      novos += parte.length;
+    }
+    return { novos, total: Object.keys(idx.itens).length, erro: null };
   } catch (e) {
-    return { novos: 0, total: Object.keys(idx.itens).length, erro: e.message };
+    return { novos, total: Object.keys(idx.itens).length, erro: e.message };
   }
 }
 

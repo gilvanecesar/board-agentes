@@ -49,12 +49,13 @@ async function renderControle() {
   const atual = () => geracao === controleGeracao && el.isConnected && view.name === 'list' && store.get('tab', 'ativas') === 'controle';
   let c; try { c = await api('/controle', { signal: AbortSignal.timeout(15000) }); } catch { if (atual()) el.innerHTML = '<div class="empty">Não consegui ler o controle.</div>'; return; }
   if (!atual()) return;
-  if (!c.lidoEm) { el.innerHTML = '<div class="empty">Primeira leitura em andamento (Saturno, memória e Drive)…</div>'; controleTimer = setTimeout(renderControle, 4000); return; }
+  if (!c.lidoEm) { el.innerHTML = '<div class="empty">Primeira leitura em andamento (Atena, memória e Drive)…</div>'; controleTimer = setTimeout(renderControle, 4000); return; }
   const al = c.alertas || [], erros = al.filter((a) => a.nivel === 'erro'), m = c.memoria || {};
   const oks = (c.backups || []).map((b) => b.rodadas.filter((r) => r.ok).pop()).filter(Boolean);
   const maisVelho = oks.length === (c.backups || []).length && oks.length ? oks.map((r) => r.fim).sort()[0] : null;
   const drive = c.drive || [], noDrive = drive.reduce((a, p) => a + (p.arquivos || 0), 0), bytesDrive = drive.reduce((a, p) => a + (p.bytes || 0), 0);
-  const motoresOk = (m.motores || []).filter((x) => x.memoria && x.captura).length;
+  const motoresInst = (m.motores || []).filter((x) => x.instalado !== false); // #246: motor sem binário aqui não conta
+  const motoresOk = motoresInst.filter((x) => x.memoria && x.captura).length;
   const veredito = erros.length ? ['offline', erros.length + (erros.length > 1 ? ' problemas' : ' problema')] : al.length ? ['online', 'Protegido · ' + al.length + (al.length > 1 ? ' avisos' : ' aviso')] : ['online', 'Tudo protegido'];
   const tile = (rot, valor, sub, estado) => `<div class="ctl-tile" data-state="${estado}"><span>${esc(rot)}</span><b>${esc(valor)}</b><small>${esc(sub)}</small></div>`;
   const linhaBackup = (b) => {
@@ -82,29 +83,29 @@ async function renderControle() {
   <section class="network-panel">
     <div class="network-heading"><div><span class="eyebrow">VEREDITO</span><h2>${erros.length ? 'Tem coisa precisando de você.' : 'Suas cópias estão fora das máquinas.'}</h2></div><span class="network-health" data-state="${veredito[0]}" role="status">${esc(veredito[1])}</span></div>
     <div class="ctl-tiles">
-      ${tile('Memória · última gravação', haQuantoCtl(m.ultimaGravacao), m.online ? 'servidor no ' + (m.reserva ? 'Mac (reserva)' : 'Saturno') : 'sem resposta', m.online ? 'ok' : 'erro')}
+      ${tile('Memória · última gravação', m.online && m.numeros === false ? 'no ar' : haQuantoCtl(m.ultimaGravacao), m.online ? (m.numeros === false ? 'sem os números: ' + (m.motivo || 'status só do root') : 'servidor no ' + (m.reserva ? 'Mac (reserva)' : 'Atena')) : 'sem resposta', m.online ? 'ok' : 'erro')}
       ${tile('Backup mais antigo dos 4', maisVelho ? haQuantoCtl(maisVelho) : '—', maisVelho ? quandoCtl(maisVelho) : 'algum ainda não rodou', maisVelho && (Date.now() - Date.parse(maisVelho)) < 26 * 3600000 ? 'ok' : 'erro')}
       ${tile('Guardado no Drive', bytesTxt(bytesDrive), noDrive + ' arquivos em ' + drive.filter((p) => p.ok).length + ' pastas', drive.length && drive.every((p) => p.ok) ? 'ok' : 'erro')}
-      ${tile('Motores na memória', motoresOk + ' de ' + (m.motores || []).length, 'trocar de modelo não perde o contexto', motoresOk === (m.motores || []).length && motoresOk ? 'ok' : 'erro')}
+      ${tile('Motores na memória', motoresOk + ' de ' + motoresInst.length, motoresInst.length < (m.motores || []).length ? ((m.motores || []).length - motoresInst.length) + ' não instalado(s) nesta máquina' : 'trocar de modelo não perde o contexto', motoresOk === motoresInst.length && motoresOk ? 'ok' : 'erro')}
     </div>
     ${al.length ? `<ul class="ctl-alertas">${al.map((a) => `<li data-nivel="${a.nivel}">${esc(a.texto)}</li>`).join('')}</ul>` : ''}
   </section>
   <section class="network-panel docker-panel">
     <div class="network-heading"><div><span class="eyebrow">BACKUPS DA MADRUGADA</span><h2>Quatro cópias, todo dia, fora da VPS e do Mac.</h2></div><span class="ctl-legenda"><i class="ctl-dia ctl-auto"></i>automático <i class="ctl-dia ctl-manual"></i>manual <i class="ctl-dia ctl-falhou"></i>falhou <i class="ctl-dia ctl-nada"></i>nada</span></div>
-    <div class="ctl-tabela"><div class="ctl-titulos"><span>Backup</span><span>Estado</span><span>Último</span><span>Tamanho</span><span>Próximo</span><span>14 dias</span></div>${(c.backups || []).map(linhaBackup).join('') || '<div class="docker-vazio">Saturno sem leitura</div>'}</div>
-    <div class="network-footer"><span>logs e cron do Saturno · horários no fuso daqui · clique numa linha para ver rodadas e como recuperar</span><span>Saturno: ${c.saturno && c.saturno.discoLivre ? bytesTxt(c.saturno.discoLivre) + ' livres' : 'sem leitura'}</span></div>
+    <div class="ctl-tabela"><div class="ctl-titulos"><span>Backup</span><span>Estado</span><span>Último</span><span>Tamanho</span><span>Próximo</span><span>14 dias</span></div>${(c.backups || []).map(linhaBackup).join('') || '<div class="docker-vazio">Atena sem leitura</div>'}</div>
+    <div class="network-footer"><span>logs e cron do Atena · horários no fuso daqui · clique numa linha para ver rodadas e como recuperar</span><span>Atena: ${c.atena && c.atena.discoLivre ? bytesTxt(c.atena.discoLivre) + ' livres' : 'sem leitura'}</span></div>
   </section>
   <section class="network-panel docker-panel">
-    <div class="network-heading"><div><span class="eyebrow">MEMÓRIA COMPARTILHADA</span><h2>O que os agentes guardaram.</h2></div><span class="network-health" data-state="${m.online ? 'online' : 'offline'}">${m.online ? (m.paginas || 0) + ' páginas' : 'sem resposta'}</span></div>
+    <div class="network-heading"><div><span class="eyebrow">MEMÓRIA COMPARTILHADA</span><h2>O que os agentes guardaram.</h2></div><span class="network-health" data-state="${m.online ? 'online' : 'offline'}">${m.online ? (m.numeros === false ? 'no ar · sem os números' : (m.paginas || 0) + ' páginas') : 'sem resposta'}</span></div>
     <div class="ctl-mem">
       <div class="ctl-mem-num">
         ${[['Páginas', m.paginas], ['Sessões capturadas', m.sessoes], ['Observações', m.observacoes], ['Esperando para subir', m.filaPendente]].map(([r, v]) => `<div><b>${Number(v || 0).toLocaleString('pt-BR')}</b><span>${r}</span></div>`).join('')}
-        <div class="ctl-motores">${(m.motores || []).map((x) => `<span data-state="${x.memoria && x.captura ? 'ok' : 'erro'}">${esc(x.nome)}</span>`).join('')}</div>
+        <div class="ctl-motores">${(m.motores || []).map((x) => x.instalado === false ? `<span data-state="nada" title="não instalado nesta máquina">${esc(x.nome)} · não instalado</span>` : `<span data-state="${x.memoria && x.captura ? 'ok' : 'erro'}">${esc(x.nome)}</span>`).join('')}</div>
         <span class="eyebrow" style="margin-top:14px">Captura por projeto</span>
-        ${(m.captura || []).map((x) => `<div class="ctl-cap"><span>${esc(x.projeto)}</span><span>${haQuantoCtl(x.ultimo)}</span><span>${x.eventosHoje} eventos hoje</span></div>`).join('') || '<div class="docker-vazio">nada capturado este mês</div>'}
+        ${(m.captura || []).map((x) => `<div class="ctl-cap"><span>${esc(nomeProj(x.projeto))}</span><span>${haQuantoCtl(x.ultimo)}</span><span>${x.eventosHoje} eventos hoje</span></div>`).join('') || '<div class="docker-vazio">nada capturado este mês</div>'}
       </div>
       <div class="ctl-recentes"><span class="eyebrow">Últimas memórias salvas</span>
-        ${(m.recentes || []).map((x) => `<button class="ctl-pag" data-chave="${esc(x.chave)}" title="Abrir no grafo da memória"><span>${x.sessao ? '◷ ' : ''}${esc(x.titulo)}</span><small>${esc(x.projeto)} · ${haQuantoCtl(x.atualizada)}</small></button>`).join('') || '<div class="docker-vazio">espelho da memória ainda vazio</div>'}
+        ${(m.recentes || []).map((x) => `<button class="ctl-pag" data-chave="${esc(x.chave)}" title="Ler a página da memória"><span>${x.sessao ? '◷ ' : ''}${esc(x.titulo)}</span><small>${esc(nomeProj(x.projeto))} · ${haQuantoCtl(x.atualizada)}</small></button>`).join('') || '<div class="docker-vazio">espelho da memória ainda vazio</div>'}
       </div>
     </div>
     <div class="network-footer"><span>${esc(m.url || '')} · ◷ = resumo de sessão</span><span>espelho: ${m.espelho ? haQuantoCtl(m.espelho.quando) : 'aguardando'} (a cada 10 min)</span></div>
@@ -112,11 +113,11 @@ async function renderControle() {
   <section class="network-panel docker-panel">
     <div class="network-heading"><div><span class="eyebrow">GOOGLE DRIVE</span><h2>A cópia que sobra se tudo cair.</h2></div><span class="network-health" data-state="${drive.length && drive.every((p) => p.ok) ? 'online' : 'offline'}">lido ${c.driveLidoEm ? haQuantoCtl(c.driveLidoEm) : '—'}</span></div>
     <div class="ctl-drive">${drive.map((p) => `<div class="ctl-pasta" data-state="${p.ok ? 'ok' : 'erro'}"><code>${esc(p.pasta)}</code><b>${p.ok ? bytesTxt(p.bytes) : 'sem leitura'}</b><small>${p.ok ? p.arquivos + ' arquivo(s)' + (p.lista && p.lista[0] ? ' · mais novo: ' + esc(p.lista[0].nome) : '') : esc(p.erro || '')}</small></div>`).join('') || '<div class="docker-vazio">Drive ainda não lido</div>'}</div>
-    <div class="network-footer"><span>rclone com chave própria · só enxerga as pastas de backup (drive.file)</span><span>se o Saturno cair: memoria-reserva ligar</span></div>
+    <div class="network-footer"><span>rclone com chave própria · só enxerga as pastas de backup (drive.file)</span><span>se o Atena cair: memoria-reserva ligar</span></div>
   </section>
   <div class="ctl-rodape">última leitura ${quandoCtl(c.lidoEm)} · atualiza sozinho a cada minuto</div>`;
   el.querySelectorAll('[data-abre]').forEach((bt) => { bt.onclick = () => { const id = bt.dataset.abre; CTL.aberto.has(id) ? CTL.aberto.delete(id) : CTL.aberto.add(id); renderControle(); }; });
-  el.querySelectorAll('[data-chave]').forEach((bt) => { bt.onclick = () => { GE.sel = bt.dataset.chave; navigateBoard('memoria'); }; });
+  el.querySelectorAll('[data-chave]').forEach((bt) => { bt.onclick = () => irParaMemoria(bt.dataset.chave); });
   controleTimer = setTimeout(() => { if (atual()) renderControle(); }, 60000);
 }
 // O complemento do mapa: os 4 motores ligados à memória, o board (que copia os dados para o servidor) e as ORIGENS

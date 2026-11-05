@@ -4,6 +4,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { criarCaixa, criarProjeto, subirBoard, esperarStatus, chamadas, limparCaixa, esperar } from "./ajuda.mjs";
@@ -42,8 +43,9 @@ test("⚡ em paralelo: trabalha numa cópia e, aprovado, junta na pasta — sem 
   assert.ok(!existsSync(fim.worktree.dir), "concluir remove a cópia");
 });
 
-test("⚡ com conflito: nada entra na pasta, a cópia fica guardada e a ficha avisa", async () => {
-  const { caixa, b, demo } = await preparar({ cenario: { agente: [{ texto: "fiz", dorme: 1500, escreve: { arquivo: "CLAUDE.md", conteudo: "# versão do agente\n" } }] } });
+test("⚡ com conflito (e sem tentativas do agente): nada entra na pasta, a cópia fica guardada e a ficha avisa", async () => {
+  // Desde a #208 o conflito volta primeiro para o agente (test/juntar.test.mjs); aqui, o caminho de quando elas acabam.
+  const { caixa, b, demo } = await preparar({ env: { BOARD_JUNTAR_TENTATIVAS: "0" }, cenario: { agente: [{ texto: "fiz", dorme: 1500, escreve: { arquivo: "CLAUDE.md", conteudo: "# versão do agente\n" } }] } });
   const [t] = await criar(b, "mude o CLAUDE.md", { paralelo: true });
   await ate(async () => chamadas(caixa).length > 0);
   writeFileSync(join(demo, "CLAUDE.md"), "# versão do dono, escrita enquanto o agente trabalhava\n");
@@ -55,6 +57,49 @@ test("⚡ com conflito: nada entra na pasta, a cópia fica guardada e a ficha av
   assert.ok((await log(b, t.id)).some((e) => /não deu para juntar/.test(e.texto || "")));
   await b.api("PATCH", `/api/tasks/${t.id}`, { status: "concluida" });
   assert.ok(existsSync(fim.worktree.dir), "com conflito, concluir NÃO apaga a cópia (o trabalho só existe lá)");
+});
+
+test("conversa: escrever com a resposta no meio não trava — as mensagens esperam a vez e vão juntas, na ordem", async () => {
+  const { caixa, b } = await preparar({ cenario: { conversa: [{ texto: "primeira resposta", dorme: 2000 }, "respondi as duas"] } });
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "oi" })).status, 202);
+  await ate(async () => chamadas(caixa).some((c) => c.papel === "conversa"));
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "esqueci de dizer A" })).status, 202, "com a resposta no meio, aceita");
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "e B" })).status, 202);
+  const meio = (await b.api("GET", "/api/state")).json.conversas.demo;
+  assert.equal(meio.busy, true);
+  assert.equal(meio.naVez, 2, "a tela sabe quantas esperam");
+  const naTela = (await b.api("GET", "/api/conversa/demo")).json.events.filter((e) => e.t === "dono");
+  assert.deepEqual(naTela.map((e) => [e.texto, !!e.naVez]), [["oi", false], ["esqueci de dizer A", true], ["e B", true]], "aparecem na hora, marcadas");
+  const c = await ate(async () => { const x = (await b.api("GET", "/api/conversa/demo")).json; return x.events.filter((e) => e.t === "resultado").length === 2 && !x.busy && x; });
+  const conv = chamadas(caixa).filter((x) => x.papel === "conversa");
+  assert.equal(conv.length, 2, "as duas que esperaram viraram UM turno");
+  assert.match(conv[1].msg, /1\. esqueci de dizer A[\s\S]*2\. e B/, "na ordem em que o dono escreveu");
+  assert.doesNotMatch(conv[1].msg, /\[Contexto\]/, "não repete as mesmas mensagens como contexto");
+  assert.equal(readFileSync(join(caixa.home, "processos-conversa"), "utf8"), "1", "mesmo processo vivo");
+  assert.deepEqual(c.events.filter((e) => e.t === "dono").map((e) => e.texto), ["oi", "esqueci de dizer A", "e B"], "não grava de novo ao entregar");
+  assert.equal(c.naVez, 0);
+});
+
+test("conversa: cada resposta ganha número do board (R1, R2…) e responder a uma leva a citação ao agente", async () => {
+  const { caixa, b } = await preparar({ cenario: { conversa: ["primeira resposta, sobre o rate limit", "segunda", "respondi sobre R1"] } });
+  for (const texto of ["oi", "e agora?"]) {
+    const antes = (await b.api("GET", "/api/conversa/demo")).json.events.filter((e) => e.t === "resultado").length;
+    assert.equal((await b.api("POST", "/api/conversa/demo", { texto })).status, 202);
+    await ate(async () => { const x = (await b.api("GET", "/api/conversa/demo")).json; return x.events.filter((e) => e.t === "resultado").length > antes && !x.busy; });
+  }
+  assert.deepEqual((await b.api("GET", "/api/conversa/demo")).json.events.filter((e) => e.t === "resultado").map((e) => e.n), [1, 2], "o número é do board, na ordem");
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "x", cita: 9 })).status, 400, "número que não existe no fio é recusado");
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "x", cita: "abc" })).status, 400);
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "pode detalhar?", cita: 1 })).status, 202);
+  const c = await ate(async () => { const x = (await b.api("GET", "/api/conversa/demo")).json; return x.events.filter((e) => e.t === "resultado").length === 3 && !x.busy && x; });
+  const msg = chamadas(caixa).filter((x) => x.papel === "conversa").at(-1).msg;
+  assert.match(msg, /Sobre R1 \(sua resposta que começava assim: "primeira resposta, sobre o rate limit"\):\npode detalhar\?/, "o agente recebe a citação com o trecho");
+  const dono = c.events.filter((e) => e.t === "dono").at(-1);
+  assert.equal(dono.texto, "pode detalhar?", "no log fica o texto como o dono escreveu");
+  assert.deepEqual(dono.cita, { n: 1, trecho: "primeira resposta, sobre o rate limit" }, "e a citação ao lado, para a tela");
+  assert.equal(c.events.filter((e) => e.t === "resultado").at(-1).n, 3);
+  await b.api("POST", "/api/conversa/demo/limpar");
+  assert.equal((await b.api("POST", "/api/conversa/demo", { texto: "x", cita: 1 })).status, 400, "novo fio recomeça a contagem");
 });
 
 test("conversa por projeto: um processo vivo para o fio, custo por mensagem, e 'novo fio' esquece tudo", async () => {
@@ -86,6 +131,30 @@ test("conversa com tarefa rodando na mesma pasta: as regras mandam só ler", asy
   const c = await ate(async () => chamadas(caixa).find((x) => x.papel === "conversa"));
   assert.match(arg(c, "--append-system-prompt"), /Há uma TAREFA RODANDO nesta mesma pasta/);
   await esperarStatus(b, t.id, "executada");
+});
+
+test("conversa trabalha como o terminal (modo auto, MCPs liberados); a tarefa continua com a lista fechada", async () => {
+  const { caixa, b } = await preparar({ cenario: { agente: ["ok"], conversa: ["ok"] } });
+  const [t] = await criar(b, "tarefa");
+  await esperarStatus(b, t.id, "executada");
+  await b.api("POST", "/api/conversa/demo", { texto: "oi" });
+  const c = await ate(async () => chamadas(caixa).find((x) => x.papel === "conversa"));
+  assert.equal(arg(c, "--permission-mode"), "auto", "com acceptEdits + lista, todo MCP fora dela era negado em silêncio");
+  assert.match(arg(c, "--append-system-prompt"), /MESMAS ferramentas do terminal/);
+  const a = chamadas(caixa).find((x) => x.papel === "agente");
+  assert.equal(arg(a, "--permission-mode"), "acceptEdits", "a tarefa (sem o dono olhando) NÃO ganha o modo auto");
+  assert.ok(c.args.includes("--chrome"), "sem --chrome o claude -p não enxerga a extensão do Chrome");
+  assert.match(arg(c, "--append-system-prompt"), /Chrome DELE/);
+  assert.ok(!a.args.includes("--chrome"), "tarefa NÃO usa o Chrome do dono");
+});
+
+test("conversa: BOARD_CONVERSA_PERMISSAO e BOARD_CONVERSA_CHROME trocam sem mexer em código", async () => {
+  const { caixa, b } = await preparar({ cenario: { conversa: ["ok"] }, env: { BOARD_CONVERSA_PERMISSAO: "acceptEdits", BOARD_CONVERSA_CHROME: "0" } });
+  await b.api("POST", "/api/conversa/demo", { texto: "oi" });
+  const c = await ate(async () => chamadas(caixa).find((x) => x.papel === "conversa"));
+  assert.equal(arg(c, "--permission-mode"), "acceptEdits");
+  assert.ok(!c.args.includes("--chrome"));
+  assert.doesNotMatch(arg(c, "--append-system-prompt"), /Chrome DELE/);
 });
 
 test("chat da tarefa: continua a MESMA sessão do agente", async () => {
@@ -181,7 +250,19 @@ test("Controle e Status respondem mesmo com servidor, Drive e docker fora do ar 
   assert.ok(mon && "aiMemory" in mon && "googleDrive" in mon && "docker" in mon);
   const mon2 = await ate(async () => { const x = (await b.api("GET", "/api/monitoring")).json; return x.timestamp && x; });
   assert.ok(mon2, "a leitura de fundo terminou");
-  assert.notEqual(mon2.saturno.online, true, "servidor fora do ar não aparece como online");
+  assert.notEqual(mon2.atena.online, true, "servidor fora do ar não aparece como online");
+});
+
+test("board NO servidor (BOARD_SERVIDOR=local, #239): lê o servidor sem ssh, não lê o Mac e a memória local não vira 'reserva'", async () => {
+  // O ssh da caixa recusa tudo: só lendo localmente o servidor aparece no ar.
+  const { b } = await preparar({ env: { BOARD_SERVIDOR: "local" }, antes: (c) => writeFileSync(join(c.home, ".ai-memory-env.sh"),
+    'export AI_MEMORY_SERVER_URL="http://127.0.0.1:1"\n') });
+  const mon = await ate(async () => { const x = (await b.api("GET", "/api/monitoring")).json; return x.timestamp && x; });
+  assert.ok(mon, "a leitura de fundo terminou");
+  assert.equal(mon.atena.online, true, "o próprio servidor está no ar sem ssh para si mesmo");
+  assert.match(mon.docker.mac.motivo, /roda no servidor/, "o Mac não é lido daqui");
+  assert.equal(mon.aiMemory.host, "Atena", "127.0.0.1 no servidor é o próprio servidor, não a reserva do Mac");
+  assert.equal((await b.api("GET", "/api/controle")).status, 200);
 });
 
 test("sobe com as rotinas de fundo ligadas (como no dia a dia) sem erro de carregamento", async () => {
@@ -215,3 +296,32 @@ test("barrado numa ferramenta mas o agente contornou e entregou: segue a esteira
   assert.ok((await log(b, t.id)).some((e) => /a permissão barrou: Edit/.test(e.texto || "")));
 });
 
+
+test("conserto feito, portão cortado por tempo, e na volta nada a mudar: a conferência roda de novo (não é 'defeito de pé') — a #188", async () => {
+  const cont = join(tmpdir(), "portao-188-" + process.pid);
+  const { caixa, b } = await preparar({ env: { BOARD_PORTAO_TIMEOUT_MIN: "0.03", BOARD_RETENTATIVAS: "1", BOARD_RETENTATIVA_MIN: "0.02" },
+    cenario: { agente: [{ texto: "fiz", escreve: { arquivo: "a.txt" } }, { texto: "consertei", escreve: { arquivo: "b.txt" } }, "nada a mudar: o conserto já está feito"],
+      qa: ["REPROVADO\na trava deixa passar preço escrito por extenso", "APROVADO"] },
+    antes: (c) => writeFileSync(join(c.dev, "demo", "package.json"), JSON.stringify({ name: "demo", scripts: {
+      check: `bash -c 'n=$(cat ${cont} 2>/dev/null || echo 0); echo $((n+1)) > ${cont}; if [ "$n" = 1 ]; then sleep 30; fi; true'` } })) });
+  const [t] = await criar(b, "faça");
+  const fim = await esperarStatus(b, t.id, ["executada"], 30000);
+  assert.equal(fim.status, "executada", fim.error);
+  const ev = await log(b, t.id);
+  assert.ok(ev.some((e) => e.t === "fim" && /passou de 0.03 min e foi interrompido.*não é teste falhando/.test(e.texto || e.motivo || JSON.stringify(e))), "o corte por tempo é dito como corte, não como teste falhando");
+  assert.ok(ev.some((e) => /o conserto já foi feito antes — a conferência roda de novo/.test(e.texto || "")));
+  assert.deepEqual(chamadas(caixa).filter((c) => c.papel === "qa").length, 2, "o QA confere de novo e aprova");
+  assert.equal(chamadas(caixa).filter((c) => c.papel === "agente").length, 2 + 1, "não houve rodada de 'conserte o portão' por causa do corte");
+});
+
+test("reprovado e nada mudou desde a reprovação: continua erro (o defeito está de pé)", async () => {
+  const { caixa, b } = await preparar({ env: { BOARD_REVISOES: "0", BOARD_RETENTATIVAS: "1", BOARD_RETENTATIVA_MIN: "0.02" },
+    cenario: { agente: [{ texto: "fiz", escreve: { arquivo: "a.txt" } }, "acho que está certo"], qa: ["REPROVADO\ndefeito"] } });
+  const [t] = await criar(b, "faça");
+  for (let i = 0; i < 100 && chamadas(caixa).filter((c) => c.papel === "agente").length < 2; i++) await esperar(150);
+  const fim = await esperarStatus(b, t.id, ["erro"], 20000);
+  await esperar(500);
+  const f2 = await tarefa(b, t.id);
+  assert.match(f2.error, /não mexeu em nada — o defeito continua de pé/);
+  assert.equal(chamadas(caixa).filter((c) => c.papel === "qa").length, 1, "sem mudança, não confere de novo");
+});

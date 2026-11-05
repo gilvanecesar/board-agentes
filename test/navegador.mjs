@@ -1,13 +1,17 @@
 // A headless Chrome driven over the DevTools protocol (WebSocket built into Node 22) — no npm dependency.
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { portaLivre, esperar } from "./ajuda.mjs";
+import { acharChrome, conectarCdp } from "../servidor/cdp.mjs";
+import { vigiarProcesso, vigiarPasta, soltarPasta } from "./vigia.mjs";
 
-const CANDIDATOS = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean);
-export const CHROME = CANDIDATOS.find((c) => existsSync(c)) || null;
+// A procura do Chrome e o cliente do CDP são os mesmos do navegador dos agentes (servidor/cdp.mjs).
+export const CHROME = acharChrome();
+// Sem janela NÃO é sem som: o swoosh e o sininho da tela saíam nas caixas do Atena (31/10, #287). --mute-audio zera o som
+// mas ainda abre stream na PipeWire; --disable-audio-output nem abre. O AudioContext segue "running" com as duas (medido).
+export const SEM_SOM = "--mute-audio --disable-audio-output";
 
 /** Script injected before any page script: frozen clock and a seeded Math.random (the graph layout uses it). */
 export const roteiroFixo = (agora) => `(() => {
@@ -16,42 +20,34 @@ export const roteiroFixo = (agora) => `(() => {
   let s = 42; Math.random = () => { s |= 0; s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 })();`;
 
-export async function abrirNavegador({ largura = 1440, altura = 1000, agora = null } = {}) {
+export async function abrirNavegador({ largura = 1440, altura = 1000, agora = null, args = [], visao = null } = {}) {
   if (!CHROME) throw new Error("Chrome não encontrado (defina CHROME=<caminho>)");
   const porta = await portaLivre();
-  const perfil = mkdtempSync(join(tmpdir(), "board-chrome-"));
-  const cp = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${porta}`, `--user-data-dir=${perfil}`, "--no-first-run",
+  const perfil = mkdtempSync(join(tmpdir(), "board-chrome-")); vigiarPasta(perfil);
+  const cp = spawn(CHROME, ["--headless=new", ...SEM_SOM.split(" "), `--remote-debugging-port=${porta}`, `--user-data-dir=${perfil}`, "--no-first-run",
     "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1", "--lang=pt-BR",
     "--font-render-hinting=none", "--disable-features=BackForwardCache", // o cache de "voltar" guardava as páginas com a conexão de eventos aberta: com 6 presas, o Chrome não navega mais
-     `--window-size=${largura},${altura}`, ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []), "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+     `--window-size=${largura},${altura}`, ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []), ...args, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   let errChrome = ""; cp.stderr.on("data", (d) => { errChrome = (errChrome + d).slice(-2000); });
   const mata = () => { try { cp.kill("SIGKILL"); } catch { /* já saiu */ } };
-  process.on("exit", mata); // quem nos derruba não deixa Chrome órfão para trás
+  vigiarProcesso(cp); // morte por sinal não passa pelo "exit" abaixo: quem garante é a vigia
+  process.on("exit", mata);
   let alvo;
   // Até 30 s: numa máquina de CI fria o Chrome já levou mais de 10 s para abrir (27/09, o teste desistia antes).
   for (let i = 0; i < 300 && !alvo && cp.exitCode === null; i++) {
     await esperar(100);
     try { alvo = (await (await fetch(`http://127.0.0.1:${porta}/json`)).json()).find((t) => t.type === "page"); } catch { /* ainda subindo */ }
   }
-  if (!alvo) { cp.kill("SIGKILL"); throw new Error(`o Chrome não abriu a porta de depuração (${cp.exitCode !== null ? "saiu com código " + cp.exitCode : "30 s sem resposta"}): ${errChrome.trim().slice(-600)}`); }
-  const ws = new WebSocket(alvo.webSocketDebuggerUrl);
-  await new Promise((ok, bad) => { ws.onopen = ok; ws.onerror = bad; });
-  let seq = 0; const pend = new Map(); const erros = []; const ouvintes = []; const abertos = new Map(); const dialogos = [];
-  ws.onmessage = (m) => {
-    const d = JSON.parse(m.data);
-    if (d.id && pend.has(d.id)) { const [ok, bad] = pend.get(d.id); pend.delete(d.id); d.error ? bad(new Error(d.error.message)) : ok(d.result); return; }
+  if (!alvo) { process.off("exit", mata); cp.kill("SIGKILL"); throw new Error(`o Chrome não abriu a porta de depuração (${cp.exitCode !== null ? "saiu com código " + cp.exitCode : "30 s sem resposta"}): ${errChrome.trim().slice(-600)}`); }
+  const cdp = await conectarCdp(alvo.webSocketDebuggerUrl);
+  const erros = []; const abertos = new Map(); const dialogos = [];
+  const cmd = cdp.cmd; // todo comando tem prazo: uma chamada feita com a página navegando pode nunca ter resposta
+  cdp.ouvir((d) => {
     if (d.method === "Runtime.exceptionThrown") erros.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") erros.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
     if (d.method === "Page.javascriptDialogOpening") { dialogos.push(d.params.message); cmd("Page.handleJavaScriptDialog", { accept: true }).catch(() => {}); }
     if (d.method === "Network.requestWillBeSent") abertos.set(d.params.requestId, d.params.request.url);
     if (d.method === "Network.loadingFinished" || d.method === "Network.loadingFailed") abertos.delete(d.params.requestId);
-    for (const f of ouvintes) f(d);
-  };
-  // Every command has a deadline: a call made while the page is navigating can otherwise never get an answer.
-  const cmd = (method, params = {}, prazo = 20000) => new Promise((ok, bad) => {
-    const id = ++seq; const t = setTimeout(() => { pend.delete(id); bad(new Error(`o Chrome não respondeu a ${method}`)); }, prazo);
-    pend.set(id, [(v) => { clearTimeout(t); ok(v); }, (e) => { clearTimeout(t); bad(e); }]);
-    ws.send(JSON.stringify({ id, method, params }));
   });
   await cmd("Runtime.enable"); await cmd("Page.enable"); await cmd("Network.enable");
   // Avaliação: TELA_COBERTURA=<pasta> grava quais funções dos scripts da tela rodaram (cobertura do V8 no Chrome).
@@ -62,6 +58,9 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   await cmd("Emulation.setLocaleOverride", { locale: "pt-BR" });
   await cmd("Emulation.setDeviceMetricsOverride", { width: largura, height: altura, deviceScaleFactor: 1, mobile: largura < 760 });
   if (agora) await cmd("Page.addScriptToEvaluateOnNewDocument", { source: roteiroFixo(agora) });
+  // #364: o quadro abre em kanban; as baterias escritas para a lista abrem na lista (o kanban tem o teste dele). Só quando
+  // a página ainda não escolheu: o clique em "▦ Kanban" dentro do teste vale.
+  if (visao) await cmd("Page.addScriptToEvaluateOnNewDocument", { source: `try { if (localStorage.getItem("board.visao") === null) localStorage.setItem("board.visao", ${JSON.stringify(JSON.stringify(visao))}); } catch {}` });
   const avaliar = async (expr) => {
     const r = await cmd("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true }, 15000);
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
@@ -97,11 +96,12 @@ export async function abrirNavegador({ largura = 1440, altura = 1000, agora = nu
   const tamanho = (l, a) => cmd("Emulation.setDeviceMetricsOverride", { width: l, height: a, deviceScaleFactor: 1, mobile: l < 760 });
   const fechar = async () => {
     if (cobertura) { await coletar(); const { writeFileSync } = await import("node:fs"); writeFileSync(join(cobertura, `tela-${process.pid}-${Date.now()}.json`), JSON.stringify(coletas)); }
-    try { ws.close(); } catch { /* já fechou */ }
+    cdp.fechar();
     cp.kill("SIGKILL");
     // Espera o Chrome sair DE FATO: apagar o perfil com ele ainda escrevendo dava ENOTEMPTY no Linux (CI de 27/09).
     await Promise.race([new Promise((ok) => (cp.exitCode !== null || cp.signalCode ? ok() : cp.once("exit", ok))), esperar(5000)]);
-    try { rmSync(perfil, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 }); } catch { /* faxina não reprova teste */ }
+    process.off("exit", mata);
+    try { rmSync(perfil, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 }); soltarPasta(perfil); } catch { /* faxina não reprova teste: a vigia tenta de novo quando o teste sair */ }
   };
-  return { cmd, avaliar, carregar, quieto, foto, tamanho, fechar, erros, dialogos };
+  return { pid: cp.pid, perfil, cmd, ouvir: cdp.ouvir, avaliar, carregar, quieto, foto, tamanho, fechar, erros, dialogos };
 }

@@ -134,6 +134,30 @@ test("Claude sem cota → Codex assume; a tarefa termina e o revisor segue no Cl
   assert.equal(doMotor(caixa, "claude", "revisor").length, 1);
 });
 
+test("conversa troca de motor e volta: cada CLI retoma a SUA sessão, e quem entra recebe por escrito o que perdeu", async () => {
+  const { caixa, b } = await preparar({ cenario: { conversa: ["resposta do claude", "claude de volta"], gemini: ["resposta do gemini"] } });
+  const conv = async (n) => ate(async () => { const x = (await b.api("GET", "/api/conversa/demo")).json; return x.events.filter((e) => e.t === "resultado").length === n && !x.busy && x; });
+  await b.api("POST", "/api/conversa/demo", { texto: "oi claude", motor: "claude" });
+  await conv(1);
+  const sessaoClaude = chamadas(caixa).filter((c) => c.papel === "conversa")[0].args;
+  assert.ok(!sessaoClaude.includes("--resume"), "fio novo");
+
+  await b.api("POST", "/api/conversa/demo", { texto: "agora você, gemini", motor: "gemini" });
+  await conv(2);
+  const [g] = doMotor(caixa, "gemini");
+  assert.equal(arg(g, "--conversation"), undefined, "a sessão do Claude NÃO vai para o agy (era 'conversation not found')");
+  const pg = g.args[g.args.indexOf("-p") + 1];
+  assert.match(pg, /Dono: oi claude[\s\S]*Agente \(claude, R1\): resposta do claude[\s\S]*agora você, gemini$/, "o Gemini recebe o que foi dito antes");
+
+  await b.api("POST", "/api/conversa/demo", { texto: "voltei pro claude", motor: "claude" });
+  const fim = await conv(3);
+  const volta = chamadas(caixa).filter((c) => c.papel === "conversa").at(-1);
+  assert.match(arg(volta, "--resume") || "", /^sessao-conversa-/, "o Claude retoma a sessão DELE, não a do Gemini");
+  assert.match(volta.msg, /Agente \(gemini, R2\): resposta do gemini[\s\S]*voltei pro claude$/, "e fica sabendo o que o Gemini disse");
+  assert.doesNotMatch(volta.msg, /resposta do claude/, "o que ele mesmo disse não volta (a sessão já tem)");
+  assert.ok(!fim.events.some((e) => /não existe mais/.test(e.texto || "")), "o fio do Claude não foi perdido");
+});
+
 test("conversa do projeto no Codex: responde e a segunda mensagem retoma o mesmo fio", async () => {
   const { caixa, b } = await preparar({ cenario: { codex: ["primeira no codex", "segunda no codex"] } });
   await b.api("POST", "/api/conversa/demo", { texto: "oi", motor: "codex" });

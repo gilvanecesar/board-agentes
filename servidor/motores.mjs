@@ -2,11 +2,14 @@
 import { spawn, execFileSync } from "child_process";
 import { readFileSync, appendFileSync } from "fs";
 import { join } from "path";
+import { pastasGravaveis } from "./git-pastas.mjs";
 import { ANEXOS, ESFORCO_CLAUDE, MODELOS_FILE, MODELO_PADRAO, MOTOR_QA, MOTOR_REVISOR, PERMISSION, QA_MODEL, RAW_LIGADO, REVIEW_MODEL, TIMEOUT_MS, TOOLS, cut, modeloServe, stripAnsi } from "./config.mjs";
 import { logEvent, rawPath, running, save, state, toolTarget } from "./estado.mjs";
 import { projectOf } from "./projetos.mjs";
 import { houseRules } from "./regras.mjs";
 import { escolherMotor } from "./uso.mjs";
+import { argsPermissao, comRegras } from "./permissoes.mjs";
+
 
 /**
  * O catálogo de modelos de cada motor: o que dá para escolher na tela e o que cada porte usa.
@@ -88,9 +91,11 @@ export const MOTORES = {
   claude: {
     rotulo: "Claude", bin: "claude", moeda: "usd",
     exemploModelo: "opus, sonnet, haiku",
-    args: ({ prompt, regras, tools, modelo, resume, esforco, semCaptura }) => {
+    args: ({ prompt, regras, tools, modelo, resume, esforco, semCaptura, permissao }) => {
       const a = ["-p", prompt, "--append-system-prompt", regras,
         "--output-format", "stream-json", "--verbose", "--allowedTools", tools];
+      // Só o AGENTE da tarefa pergunta ao dono pela tela (#232); revisor e QA não pedem nada a ninguém.
+      if (permissao) a.push(...argsPermissao(permissao));
       if (PERMISSION === "bypass") a.push("--dangerously-skip-permissions");
       else a.push("--permission-mode", PERMISSION);
       if (modelo) a.push("--model", modelo);
@@ -143,7 +148,7 @@ export const MOTORES = {
       // de branch nem commita ("Operation not permitted" em .git/index.lock, #127). O `-c` vale
       // TAMBÉM na retomada — `exec resume` aceita -c, só não aceita --sandbox.
       if (PERMISSION !== "bypass") {
-        if (dir) flags.push("-c", `sandbox_workspace_write.writable_roots=["${join(dir, ".git")}"]`);
+        if (dir) flags.push("-c", `sandbox_workspace_write.writable_roots=[${pastasGravaveis(dir).map((p) => JSON.stringify(p)).join(",")}]`);
         // Sem rede o agente não faz pull, push nem `gh pr` — "Could not resolve host: github.com".
         flags.push("-c", "sandbox_workspace_write.network_access=true");
       }
@@ -304,20 +309,24 @@ export function runMotor(task, prompt, { resume, quem = "agente", regras, modelo
     const esforco = quem === "agente" && id === "claude" && !task.modelo ? ESFORCO_CLAUDE[task.porte] || "" : "";
     if (quem === "agente" && state.tasks.includes(task)) { task.modeloUsado = modeloEfetivo || MODELO_PADRAO[id] || ""; task.esforcoUsado = esforco; task.motorUsado = id; }
     const args = M.args({
-      prompt: safe, regras: regras || houseRules(task, project), tools: tools || TOOLS,
+      prompt: safe, regras: regras || houseRules(task, project),
+      tools: quem === "agente" && state.tasks.includes(task) ? comRegras(tools || TOOLS, task.project) : tools || TOOLS,
+      permissao: quem === "agente" && state.tasks.includes(task) ? { slug: task.project, tarefa: task.id, papel: "agente" } : null,
       modelo: modeloEfetivo,
       resume, dir: project.dir,
       esforco, semCaptura: quem !== "agente",
       imagens: quem === "agente" ? (task.anexos || []).map((a) => a.caminho || join(ANEXOS, a.id)) : [],
     });
 
-    const env = { ...process.env, PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` };
+    const env = { ...process.env, BOARD_QUEM: state.tasks.includes(task) ? `tarefa #${task.id}` : String(task.id), PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` };
+    // Revisor e QA sem segundo plano (#306), medido no CLI 2.1.316: com isto, `run_in_background` é recusado na validação do Bash. O agente continua com ele.
+    if (quem === "revisor" || quem === "qa") env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
     let cp;
     try { cp = spawn(M.bin, args, { cwd: project.dir, env, stdio: ["ignore", "pipe", "pipe"] }); }
     catch (e) { return done({ result: "", error: `não consegui iniciar o ${M.bin}: ` + e.message }); }
     running.set(task.id, cp);
 
-    const out = { result: "", sessionId: resume || null, cost: 0, tokens: 0, turns: 0, dur: 0, code: null, error: null, escreveu: false, motor: id };
+    const out = { result: "", resultados: [], sessionId: resume || null, cost: 0, tokens: 0, turns: 0, dur: 0, code: null, error: null, escreveu: false, motor: id };
     const comecou = Date.now(); // motor que não informa duração (codex) ganha a do relógio
     let buf = "";
     const timer = setTimeout(() => { out.error = `tempo esgotado (${limite / 60000} min)`; cp.kill("SIGTERM"); }, limite);
@@ -343,11 +352,13 @@ export function runMotor(task, prompt, { resume, quem = "agente", regras, modelo
         },
         erro: (texto, cota) => {
           out.error = texto;
+          out.motorErrou = true; // o próprio motor disse que falhou: é diferente de ser cortado no meio (#306)
           if (cota) out.cota = true; // quem sabe que foi cota é o motor, não uma palavra no texto
           logEvent(task.id, { t: "solto", texto: (cota ? "⛔ limite de uso: " : "⛔ erro: ") + cut(texto, 300) });
         },
         resultado: (texto, { custo = 0, tokens = 0 } = {}) => {
           out.result = texto || out.result;
+          if (texto) out.resultados.push(texto);
           if (!out.dur) out.dur = Date.now() - comecou;
           logEvent(task.id, { t: "resultado", texto: out.result, custo, tokens, turnos: out.turns, dur: out.dur, quem, motor: id });
         },

@@ -116,3 +116,26 @@ test("índice incremental: só a memória que mudou é recalculada", async () =>
   assert.equal(Object.keys(idx.itens).length, 8, "todas as memórias no índice");
   assert.ok(novos <= 1 + 1 * 4 && novos >= 2, `recalculou só a que mudou (+ os pedidos da prévia): ${novos} textos`);
 });
+
+test("o índice da busca de tarefas fica pronto ao subir, sem esperar a 1ª busca (#270)", async () => {
+  const { b, caixa } = await preparar({ env: { BOARD_SEM_ROTINAS: "0", BOARD_BUSCA_INDEXAR_S: "1" } });
+  const { json } = await b.api("POST", "/api/tasks", { text: "conferir o backup da madrugada", project: "loja" });
+  const id = String(json.tasks[0].id);
+  const idx = join(caixa.board, "data", "embeddings.json");
+  let itens = {};
+  for (let i = 0; i < 40 && !itens[id]; i++) { try { itens = JSON.parse(readFileSync(idx, "utf8")).itens; } catch { /* ainda não existe */ } await esperar(200); }
+  assert.ok(itens[id], "a tarefa entrou no índice sem ninguém buscar");
+});
+
+test("índice que não grava não derruba o board: a rotina só registra e o board segue no ar (#270)", async () => {
+  const fake = await servidorDeSentido(CONCEITOS); atual.push(() => fake.fechar().catch(() => {}));
+  const caixa = criarCaixa(); criarProjeto(caixa, "loja"); caixa.cenario({});
+  mkdirSync(join(caixa.board, "data", "embeddings.json.tmp"), { recursive: true }); // writeFile do índice dá EISDIR
+  const b = await subirBoard(caixa, { BOARD_BUSCA_PROVEDOR: "ollama", BOARD_OLLAMA_URL: fake.url, BOARD_SEM_ROTINAS: "0", BOARD_BUSCA_INDEXAR_S: "0.2" });
+  atual.push(async () => { await b.fim(); limparCaixa(caixa); });
+  await esperar(1500); // a rotina já rodou
+  assert.equal((await b.api("GET", "/api/state")).status, 200, "o board continua respondendo");
+  const r = (await b.api("GET", "/api/busca?q=backup")).json;
+  assert.equal(r.modo, "lexico");
+  assert.match(r.aviso, /EISDIR/);
+});

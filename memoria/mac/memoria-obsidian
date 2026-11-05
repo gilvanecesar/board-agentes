@@ -1,6 +1,6 @@
 #!/bin/bash
 # Monta/atualiza o cofre do Obsidian "Memória" (~/Documents/Memoria) — SÓ PARA VER, não para editar.
-#   ai-memory/<projeto>/  espelho do wiki do ai-memory no Saturno (nomes legíveis, sem _lint/_meta)
+#   ai-memory/<projeto>/  espelho do wiki do ai-memory no Atena (nomes legíveis, sem _lint/_meta)
 #   portatil/             link para MEMORIA_PORTATIL, se definido (uma memória extra, versionada)
 #   projetos/<projeto>/   link para a memória de cada projeto do Claude Code no Mac
 # Quem roda a cada 10 min é o board (ele tem acesso à ~/Documents; o cron do macOS não tem).
@@ -10,7 +10,7 @@ COFRE="$HOME/Documents/Memoria"; CACHE="$HOME/.local/share/memoria-obsidian/wiki
 FORA="${MEMORIA_FORA:-}"                                      # projetos a deixar de fora do cofre
 mkdir -p "$COFRE/ai-memory" "$COFRE/projetos" "$CACHE"
 rsync -a --delete --exclude .git -e "ssh -o BatchMode=yes -o ConnectTimeout=8" --rsync-path="sudo rsync" \
-  saturno:/var/lib/ai-memory/wiki/ "$CACHE/" || { echo "$(date '+%F %T') não consegui ler o Saturno" >&2; exit 1; }
+  atena:/var/lib/ai-memory/wiki/ "$CACHE/" || { echo "$(date '+%F %T') não consegui ler o Atena" >&2; exit 1; }
 usados=" "
 for ws in "$CACHE"/*/; do
   for p in "$ws"*/; do
@@ -33,7 +33,7 @@ done
 Este cofre junta, num lugar só, tudo o que os agentes lembram:
 
 - **ai-memory/** — a memória compartilhada entre os modelos (Claude, Codex, Gemini, opencode), espelhada do
-  Saturno a cada 10 minutos. `_global` vale para todos os projetos.
+  Atena a cada 10 minutos. `_global` vale para todos os projetos.
 - **portatil/** — uma memória extra, se `MEMORIA_PORTATIL` estiver definida.
 - **projetos/** — a memória de cada projeto no Mac.
 

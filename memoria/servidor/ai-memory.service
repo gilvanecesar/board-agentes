@@ -1,5 +1,5 @@
 [Unit]
-Description=ai-memory (memoria compartilhada dos agentes) - servidor central no Saturno
+Description=ai-memory (memoria compartilhada dos agentes) - servidor central no Atena
 Documentation=https://github.com/akitaonrails/ai-memory
 After=network-online.target
 Wants=network-online.target

@@ -1,0 +1,10 @@
+# ~/.config/systemd/user/memoria-espelho.service — o espelho da memória para o board do servidor (#255).
+# Instalar: install -m 755 memoria-espelho ~/.local/bin/ && cp memoria-espelho.{service,timer} ~/.config/systemd/user/
+#           systemctl --user daemon-reload && systemctl --user enable --now memoria-espelho.timer
+[Unit]
+Description=Espelho da memória (ai-memory -> ~/Memoria/ai-memory) para o board
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/memoria-espelho
+Nice=10

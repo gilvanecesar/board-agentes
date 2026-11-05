@@ -35,7 +35,7 @@ test("pergunta que não mexe em arquivo: responde e não passa pela conferência
 
 test("mexeu em arquivo: portão → revisor → QA, e revisor/QA rodam sem captura de memória", async () => {
   const { caixa, b } = await preparar({ cenario: {
-    agente: [{ texto: "criei ok.txt", escreve: { arquivo: "ok.txt" } }], revisor: ["APROVADO\nsem defeito"], qa: ["APROVADO\nnão quebrou"] } });
+    agente: [{ texto: "criei ok.txt", escreve: { arquivo: "ok.txt" } }], revisor: ["APROVADO\nsem defeito\nGRAVES: nenhum\nMENORES: nenhum"], qa: ["APROVADO\nnão quebrou\nGRAVES: nenhum\nMENORES: nenhum"] } });
   const [t] = await criar(b, "crie o arquivo ok.txt");
   const fim = await esperarStatus(b, t.id, ["executada", "erro"]);
   assert.equal(fim.status, "executada", fim.error);
@@ -64,13 +64,13 @@ test("revisor reprova: o agente conserta NA MESMA sessão, com o parecer, e a es
   assert.deepEqual(chamadas(caixa).map((c) => c.papel), ["agente", "revisor", "agente", "revisor", "qa"]);
 });
 
-test("revisor sem veredito legível = reprovado (fail-closed)", async () => {
+test("revisor sem veredito legível nunca aprova (fail-closed)", async () => {
   const { caixa, b } = await preparar({ env: { BOARD_REVISOES: "0" }, cenario: {
     agente: [{ texto: "fiz", escreve: { arquivo: "a.txt" } }], revisor: ["parece bom para mim"] } });
   const [t] = await criar(b, "faça a.txt");
   const fim = await esperarStatus(b, t.id, ["executada", "erro"]);
   assert.equal(fim.status, "erro");
-  assert.match(fim.error, /revisor reprovou \(sem veredito\)/);
+  assert.match(fim.error, /revisor terminou duas vezes sem veredito/);
   assert.ok(!chamadas(caixa).some((c) => c.papel === "qa"), "com o revisor reprovando, o QA nem roda");
 });
 
@@ -165,6 +165,27 @@ test("produção roda numa CÓPIA a partir do origin: a pasta do dono (com traba
   assert.ok(!existsSync(join(prod, "feito.txt")), "nada entrou na pasta do dono");
   assert.equal(readFileSync(join(prod, "CLAUDE.md"), "utf8"), "# prod\nanotação do dono sem commit\n");
   assert.match(arg(ag, "--append-system-prompt"), /NUNCA rode `git checkout main`/);
+});
+
+test("produção e nome do dono vindos SÓ do board.env (como na máquina do dono) valem: cópia do origin, regras com o nome", async () => {
+  // De 26/09 a 02/10 o config lia BOARD_PRODUCAO antes de carregar o board.env: produção virou projeto comum.
+  const caixa = criarCaixa();
+  const prod = criarProjeto(caixa, "prod", { origem: true });
+  writeFileSync(join(prod, "CLAUDE.md"), "# prod\nanotação do dono sem commit\n");
+  writeFileSync(join(caixa.board, "board.env"), "BOARD_PRODUCAO=prod\nBOARD_DONO=Fulano\n");
+  caixa.cenario({ agente: [{ texto: "PR aberto: https://github.com/o/prod/pull/1", escreve: { arquivo: "feito.txt" } }], revisor: ["APROVADO"], qa: ["APROVADO"] });
+  const b = await subirBoard(caixa, { BOARD_PRODUCAO: null, BOARD_DONO: null });
+  atual.push([b, caixa]);
+  const [t] = await criar(b, "mude algo em produção", { project: "prod", entrega: "direto" });
+  assert.equal(t.entrega, "pr", "produção sempre entrega por PR");
+  const fim = await esperarStatus(b, t.id, ["executada", "erro"]);
+  assert.equal(fim.status, "executada", fim.error);
+  assert.equal(fim.worktree.producao, true, "cópia de produção, não comum");
+  assert.equal(fim.worktree.juntar, null, "produção nunca junta na pasta do dono");
+  const ag = chamadas(caixa).find((c) => c.papel === "agente");
+  assert.match(ag.cwd, /\/\.board-agentes\/prod-/);
+  assert.ok(!existsSync(join(prod, "feito.txt")), "nada entrou na pasta do dono");
+  assert.match(arg(ag, "--append-system-prompt"), /dono \(Fulano\)/, "BOARD_DONO do board.env chega às regras");
 });
 
 test("anexos: aceita imagem e PDF pela assinatura, recusa o resto, e o agente recebe o caminho", async () => {

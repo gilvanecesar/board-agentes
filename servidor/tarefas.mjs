@@ -1,10 +1,11 @@
 // Criar, editar, reordenar e remover tarefas; o porte automático.
 import { execFile } from "child_process";
 import { tmpdir } from "os";
-import { unlinkSync } from "fs";
-import { CLASSIFICAR, ESFORCO_CLAUDE, MOTOR_PADRAO, PORTES, PRODUCAO, STATUSES, cut, modeloServe, now } from "./config.mjs";
+import { existsSync, readFileSync, unlinkSync } from "fs";
+import { join } from "path";
+import { CLASSIFICAR, DEV, ESFORCO_CLAUDE, MOTOR_PADRAO, PORTES, PRODUCAO, STATUSES, cut, modeloServe, now } from "./config.mjs";
 import { broadcast, logEvent, logPath, rawPath, save, state, taskById, titleOf } from "./estado.mjs";
-import { removerCopia } from "./projetos.mjs";
+import { projetosVisiveis, removerCopia } from "./projetos.mjs";
 import { MOTORES } from "./motores.mjs";
 import { stopTask } from "./fila.mjs";
 import { anexosValidos } from "./anexos.mjs";
@@ -33,17 +34,37 @@ export function createTasks(text, project, { queue = false, entrega = "direto", 
       order: id, createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
       sessionId: null, cost: 0, turns: 0, durationMs: 0, result: null, error: null, busy: false,
     };
-    if (paralelo) {
-      task.paralelo = true;
-      // Produção só por PR (regra de ouro): o agente ⚡ entrega pela branch dele.
-      if (PRODUCAO.includes(task.project) && task.entrega === "direto") task.entrega = "pr";
-    }
-    if (CLASSIFICAR && !task.porte && !task.modelo) task.classificando = true;
+    if (paralelo) task.paralelo = true;
+    // Produção só por PR (regra de ouro), com ou sem ⚡: ela roda numa cópia, e "direto" deixaria o trabalho preso lá.
+    if (PRODUCAO.includes(task.project) && task.entrega === "direto") task.entrega = "pr";
+    // A mesma chamada curta decide o porte E confere o projeto (com 2+ projetos na seleção).
+    if (CLASSIFICAR && ((!task.porte && !task.modelo) || candidatosDeProjeto().length > 1)) task.classificando = true;
     state.tasks.push(task); created.push(task);
   }
   save(); broadcast("state");
   for (const t of created) if (t.classificando) classificarPorte(t);
   return created;
+}
+
+/** Os projetos que o classificador pode apontar: os da seleção da tela, menos a raiz DEV. */
+const candidatosDeProjeto = () => projetosVisiveis().filter((p) => p.slug !== "DEV");
+
+/** Do que cada projeto trata, para o classificador: a entrada dele no mapa do portfólio, senão o CLAUDE.md dele. */
+export function resumoDoProjeto(p) {
+  const limpa = (s) => cut(s.replace(/\s+/g, " ").trim(), 280);
+  try {
+    const mapa = readFileSync(join(DEV, "CLAUDE.md"), "utf8");
+    const m = mapa.match(new RegExp(`^### [^\\n]*\\b${p.slug.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\b[^\\n]*\\n([\\s\\S]*?)(?=\\n\\n|\\n### |\\n---)`, "m"));
+    if (m && m[1].trim()) return limpa(m[1]);
+  } catch { /* sem mapa */ }
+  try {
+    const arq = join(p.dir, "CLAUDE.md");
+    if (existsSync(arq)) {
+      const par = readFileSync(arq, "utf8").split(/\n\s*\n/).find((b) => b.trim() && !/^\s*#/.test(b) && !/^\s*[<|`-]/.test(b));
+      if (par) return limpa(par);
+    }
+  } catch { /* sem CLAUDE.md */ }
+  return "";
 }
 
 /**
@@ -52,49 +73,98 @@ export function createTasks(text, project, { queue = false, entrega = "direto", 
  * A tarefa não sai da fila enquanto isso (`classificando`); se falhar, vai sem porte (esforço padrão).
  */
 export function classificarPorte(task) {
+  // Projeto errado (23/10, pedido do dono: "se eu falar do lojaexemplo estando no erp, o sistema identifica?"):
+  // a mesma chamada aponta o projeto. Só SUGERE — produção (Loja, ERP, CRM) não muda de pasta em silêncio.
+  const candidatos = candidatosDeProjeto();
+  const conferir = candidatos.length > 1 && !task.projetoConfirmado;
   const prompt = [
     "Classifique o PORTE desta tarefa de programação; ele decide quanto o agente pensa antes de agir.",
     "leve = mudança pequena, localizada e óbvia (texto, cor, um ajuste num lugar só, pergunta simples).",
     "pesado = mexe em várias partes, migração de banco, segurança, dinheiro, produção, bug difícil de achar, desenho de arquitetura.",
     "normal = todo o resto.",
-    "Responda SÓ uma palavra: leve, normal ou pesado.",
-    "", `Projeto: ${task.project}`, "Tarefa:", String(task.text || "").slice(0, 4000),
+    // Calibrado com o haiku de verdade (23/10): "repita o escolhido se não estiver claro" o deixava em certeza
+    // MÉDIA até em MDF-e aberto no Loja; com o critério escrito, 7/7 casos certos (4 trocas, 3 genéricos).
+    ...(conferir ? [
+      "", "Diga também em qual PROJETO o trabalho tem de acontecer. Projetos:",
+      ...candidatos.map((p) => `- ${p.slug} (${p.label})${resumoDoProjeto(p) ? ": " + resumoDoProjeto(p) : ""}`),
+      `O dono abriu a tarefa no projeto "${task.project}", mas pode ter esquecido de trocar.`,
+      "certeza alta = o texto cita algo que só existe em outro projeto (ex.: CT-e/MDF-e só no ERP; prospecção na base da Receita só no CRM).",
+      `certeza baixa = o texto serve para qualquer projeto (botão, tela, login, bug genérico) — aí repita "${task.project}".`,
+      "tipo operacao = o trabalho NÃO é mudar código: aprovação, gravar/consultar dado em banco, enviar mensagem, conferir ou diagnosticar algo em produção. tipo codigo = mudar arquivo do projeto.",
+      'Responda SÓ um JSON numa linha, com o slug exatamente como na lista: {"porte":"leve|normal|pesado","projeto":"<slug>","certeza":"alta|media|baixa","tipo":"codigo|operacao"}',
+      "", "Tarefa:",
+    ] : ["Responda SÓ uma palavra: leve, normal ou pesado.", "", `Projeto: ${task.project}`, "Tarefa:"]),
+    String(task.text || "").slice(0, 4000),
   ].join("\n");
   const args = ["-p", prompt, "--model", "haiku", "--output-format", "json", "--no-session-persistence",
     "--strict-mcp-config", "--setting-sources", "", "--tools", ""];
   const env = { ...process.env, PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` };
   execFile("claude", args, { cwd: tmpdir(), env, timeout: 60000, maxBuffer: 1 << 20 }, (_err, stdout) => {
-    let porte = null, custo = 0;
+    let porte = null, custo = 0, resp = {};
     try {
       const d = JSON.parse(stdout);
       custo = d.total_cost_usd || 0;
-      porte = (String(d.result || "").toLowerCase().match(/\b(leve|normal|pesado)\b/) || [])[1] || null;
+      const txt = String(d.result || "");
+      try { resp = JSON.parse((txt.match(/\{[\s\S]*\}/) || ["{}"])[0]); } catch { resp = {}; }
+      porte = (String(resp.porte || txt).toLowerCase().match(/\b(leve|normal|pesado)\b/) || [])[1] || null;
     } catch { /* sem resposta legível: vai sem porte */ }
     task.classificando = false;
     task.cost = Number(((task.cost || 0) + custo).toFixed(4));
+    // Só aponta com certeza ALTA e para um projeto da seleção: aviso falso ensina o dono a ignorar o aviso.
+    // O haiku devolve "erp" para "ERP": compara sem caixa (dois projetos não diferem só nisso).
+    const igual = (a, b) => String(a || "").toLowerCase() === String(b || "").toLowerCase();
+    const sugerido = conferir && String(resp.certeza || "").toLowerCase() === "alta" && !igual(resp.projeto, task.project)
+      && candidatos.find((p) => igual(p.slug, resp.projeto));
+    // Operação (aprovação, banco, envio, diagnóstico) NÃO é empurrada para projeto de produção: lá a entrega é sempre por PR e
+    // a tarefa sem código virava laço de "entrega sem PR" (#325 movida para o ERP, #330 no loja-online, 03–04/11).
+    const operacao = String(resp.tipo || "").toLowerCase().startsWith("opera") || pareceOperacao(task.text);
+    if (sugerido && operacao && PRODUCAO.includes(sugerido.slug)) {
+      logEvent(task.id, { t: "solto", texto: `ℹ o texto cita ${sugerido.label}, mas é operação, não código: não sugiro mover para lá (produção entrega só por PR)` });
+    } else if (sugerido && !task.projetoConfirmado) {
+      task.projetoSugerido = { slug: sugerido.slug, label: sugerido.label };
+      const atual = candidatos.find((p) => p.slug === task.project);
+      logEvent(task.id, { t: "solto", texto: `⚠ parece ser do ${sugerido.label}, não do ${atual?.label || task.project} — a tarefa espera você decidir (mover ou rodar aqui)` });
+    }
+    const precisavaPorte = !task.porte && !task.modelo;
     // O automático só BAIXA o esforço (leve) ou mantém o normal: "pesado" (xhigh) é escolha do dono.
     // Decisão de 24/09 — a #165 foi classificada pesada, rodou em xhigh e gastou US$ 1,76 para parar no passo 0.
     if (porte === "pesado") porte = "normal";
-    if (!task.porte && !task.modelo && porte) { task.porte = porte; task.porteAuto = true; }
+    if (precisavaPorte && porte) { task.porte = porte; task.porteAuto = true; }
     const esf = task.motor === "claude" ? ESFORCO_CLAUDE[porte] : "";
-    logEvent(task.id, { t: "solto", texto: porte
+    if (precisavaPorte) logEvent(task.id, { t: "solto", texto: porte
       ? `porte ${porte} (automático${esf ? `, esforço ${esf}` : ""}) — dá pra trocar na ficha`
       : "⚠ não consegui classificar o porte — vai com o esforço padrão" });
     save(); broadcast("state");
   });
 }
 
+/** Sinal que não depende do classificador: tarefa que leva uma aprovação da Central (#213) é operação autorizada, não mudança de código. */
+export const pareceOperacao = (texto) => /aprova[çc][ãa]o #[0-9a-f]{6,}/i.test(String(texto || ""));
+
+/** O dono respondeu ao aviso de projeto: "mover" leva a tarefa para o sugerido; "manter" roda onde está. */
+export function resolverProjeto(task, acao) {
+  const sug = task.projetoSugerido;
+  if (!sug) throw Object.assign(new Error("esta tarefa não tem aviso de projeto"), { status: 400 });
+  if (!["mover", "manter"].includes(acao)) throw Object.assign(new Error('acao = "mover" ou "manter"'), { status: 400 });
+  const de = task.project;
+  task.projetoSugerido = null; task.projetoConfirmado = true;
+  if (acao === "mover") updateTask(task, { project: sug.slug });
+  logEvent(task.id, { t: "solto", texto: acao === "mover" ? `↪ movida de ${de} para ${sug.label} pelo dono` : `✓ o dono confirmou: roda em ${de}` });
+  task.updatedAt = now(); save(); broadcast("state");
+}
+
 export function updateTask(task, patch) {
   // O dono mexeu no status à mão: a decisão é dele — cancela a retentativa agendada e zera a conta.
-  if (patch.status && STATUSES.includes(patch.status)) { task.retentativa = null; task.tentativas = 0; }
+  if (patch.status && STATUSES.includes(patch.status)) { task.retentativa = null; task.tentativas = 0; task.conferir = null; }
   if (patch.status && STATUSES.includes(patch.status) && patch.status !== task.status) {
     if (task.status === "rodando" && patch.status !== "rodando") stopTask(task, patch.status);
     else if (patch.status === "rodando") throw new Error('use status "fila" — o runner é quem põe pra rodar');
     else { task.status = patch.status; if (patch.status === "concluida") { task.finishedAt = task.finishedAt || now(); removerCopia(task); } }
   }
   if (typeof patch.text === "string" && patch.text.trim()) { task.text = patch.text.trim(); task.title = titleOf(task.text); }
-  if (typeof patch.project === "string") task.project = patch.project;
+  if (typeof patch.project === "string") { task.project = patch.project; task.projetoSugerido = null; } // o dono escolheu: o aviso perde o sentido
   if (["pr", "direto", "deploy"].includes(patch.entrega)) task.entrega = patch.entrega;
+  if (PRODUCAO.includes(task.project) && task.entrega === "direto") task.entrega = "pr";
   if (MOTORES[patch.motor] && patch.motor !== task.motor) {
     task.motor = patch.motor;
     if (task.modelo && !modeloServe(patch.motor, task.modelo)) task.modelo = null;

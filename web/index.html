@@ -6,6 +6,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap">
 <title>Board</title>
 <link rel="stylesheet" href="/estilo.css">
+<!-- Safari (26/10, pedido do dono: "aumente a fonte do board no Safari"): o tamanho é em px fixos, então o aumento é um
+     zoom da página inteira, ligado ANTES de desenhar (sem piscar). Chrome e os testes não são tocados. -->
+<script>if (/^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent)) document.documentElement.classList.add("safari");</script>
+<!-- Tamanho da letra (#364, pedido do dono: "aumentar a fonte"): 16 px de padrão, A−/A+ no topo, guardado por aparelho. Aplicado antes de desenhar. -->
+<script>try { const f = Number(JSON.parse(localStorage.getItem("board.fonte"))); if (f >= 13 && f <= 22) document.documentElement.style.fontSize = f + "px"; } catch {}</script>
 </head>
 <body>
 <a class="skip-link" href="#app">Ir para o conteúdo</a>
@@ -16,13 +21,20 @@
 <script src="/js/tempo-real.js"></script>
 <script src="/js/navegacao.js"></script>
 <script src="/js/quadro.js"></script>
-<script src="/js/consumo.js"></script>
-<script src="/js/monitoramento.js"></script>
-<script src="/js/memoria.js"></script>
 <script src="/js/controle.js"></script>
 <script src="/js/tarefa.js"></script>
 <script src="/js/conversa.js"></script>
 <script src="/js/busca.js"></script>
+<script src="/js/prs.js"></script>
+<script src="/js/sessoes.js"></script>
+<script src="/js/ghostty.js"></script>
+<script src="/js/agentes-tmux.js"></script>
+<script src="/js/permissoes.js"></script>
+<script src="/js/voz.js"></script>
+<script src="/js/voz-bloqueio.js"></script>
+<script src="/js/voz-jeito.js"></script>
+<script src="/js/voz-impressao.js"></script>
+<script src="/js/tela.js"></script>
 <script src="/js/inicio.js"></script>
 </body>
 </html>

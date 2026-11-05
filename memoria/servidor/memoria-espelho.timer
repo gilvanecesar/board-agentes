@@ -1,0 +1,11 @@
+# ~/.config/systemd/user/memoria-espelho.timer — a cada 10 min, como o memoria-obsidian no Mac (#255).
+[Unit]
+Description=Espelho da memória a cada 10 min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

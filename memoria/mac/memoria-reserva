@@ -1,15 +1,15 @@
 #!/bin/bash
-# Reserva da memória compartilhada: quando o Saturno cair (ex.: você fora de casa), sobe a memória
+# Reserva da memória compartilhada: quando o Atena cair (ex.: você fora de casa), sobe a memória
 # no Mac a partir do ÚLTIMO backup no Google Drive e aponta os 4 motores para ela.
 #   memoria-reserva ligar      → baixa do Drive, restaura, sobe local e troca Claude/Codex/Gemini/opencode
-#   memoria-reserva desligar   → derruba a local e devolve os 4 motores ao Saturno
+#   memoria-reserva desligar   → derruba a local e devolve os 4 motores ao Atena
 #   memoria-reserva estado     → mostra para onde os motores apontam
 # ⚠️ O que for gravado durante a reserva fica em ~/.local/share/ai-memory-reserva/dados
-#    e NÃO volta sozinho para o Saturno — peça para um agente importar quando voltar.
+#    e NÃO volta sozinho para o Atena — peça para um agente importar quando voltar.
 set -euo pipefail
 export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 source "$HOME/.ai-memory-env.sh"      # AI_MEMORY_SERVER_URL (o servidor) + AI_MEMORY_AUTH_TOKEN; fora do git, chmod 600
-SATURNO="${AI_MEMORY_SERVER_URL:?defina AI_MEMORY_SERVER_URL em ~/.ai-memory-env.sh}"; LOCAL="http://127.0.0.1:49374"
+ATENA="${AI_MEMORY_SERVER_URL:?defina AI_MEMORY_SERVER_URL em ~/.ai-memory-env.sh}"; LOCAL="http://127.0.0.1:49374"
 # Os dados da reserva ficam FORA de qualquer pasta versionada: se ficassem numa pasta sincronizada com o git, a
 # reserva entraria num commit.
 DADOS="$HOME/.local/share/ai-memory-reserva/dados"; LOG="$HOME/.local/share/memoria-reserva.log"
@@ -25,9 +25,9 @@ aponta() { # url
 }
 case "${1:-estado}" in
   ligar)
-    TMP=$(mktemp -d); A=$(rclone lsf gdrive_backup:ai-memory-saturno 2>/dev/null | sort | tail -1)
-    [ -n "$A" ] || { echo "não achei backup no Drive (gdrive_backup:ai-memory-saturno)"; exit 1; }
-    echo "baixando $A do Drive…"; rclone copy "gdrive_backup:ai-memory-saturno/$A" "$TMP/" 2>/dev/null
+    TMP=$(mktemp -d); A=$(rclone lsf gdrive_backup:ai-memory-atena 2>/dev/null | sort | tail -1)
+    [ -n "$A" ] || { echo "não achei backup no Drive (gdrive_backup:ai-memory-atena)"; exit 1; }
+    echo "baixando $A do Drive…"; rclone copy "gdrive_backup:ai-memory-atena/$A" "$TMP/" 2>/dev/null
     rm -rf "$DADOS"; mkdir -p "$(dirname "$DADOS")"; ai-memory --data-dir "$DADOS" restore --from "$TMP/$A" >/dev/null 2>&1; rm -rf "$TMP"
     nohup env AI_MEMORY_AUTH_TOKEN="$AI_MEMORY_AUTH_TOKEN" ai-memory --data-dir "$DADOS" serve --transport http --bind 127.0.0.1:49374 --enable-web >> "$LOG" 2>&1 &
     for i in $(seq 1 40); do nc -z 127.0.0.1 49374 2>/dev/null && break; sleep 1; done
@@ -36,8 +36,8 @@ case "${1:-estado}" in
     AI_MEMORY_SERVER_URL=$LOCAL ai-memory --data-dir "$DADOS" status 2>&1 | grep -E "^\s+pages:" ;;
   desligar)
     for p in $(pgrep -f "[d]ata-dir $DADOS serve"); do kill "$p"; done
-    aponta "$SATURNO"
-    echo "✓ reserva DESLIGADA — os 4 motores voltaram para o Saturno ($SATURNO)."
+    aponta "$ATENA"
+    echo "✓ reserva DESLIGADA — os 4 motores voltaram para o Atena ($ATENA)."
     echo "  o que foi gravado na reserva ficou em $DADOS" ;;
   estado)
     echo "Claude Code: $(claude mcp list 2>/dev/null | grep -oE 'ai-memory: [^ ]+' || echo '?')"

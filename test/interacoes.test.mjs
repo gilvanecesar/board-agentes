@@ -45,27 +45,30 @@ async function abrir(hash = "", local = {}) {
 async function ate(expr, limite = 15000) { const t0 = Date.now(); while (Date.now() - t0 < limite) { if (await nav.avaliar(expr)) return; await esperar(150); } throw new Error("não chegou: " + expr); }
 const mentes = () => JSON.parse(readFileSync(join(caixa.board, "data", "mentes.json"), "utf8"));
 
-test("conferir o endereçamento pela tela: mover de mente, conferir e aprovar", { skip: pular }, async () => {
-  await abrir("", { tab: "memoria", memoriaModo: "galpao", galpaoPP: "mente" });
-  // A tela se redesenha quando o inventário termina de carregar: espera o SELETOR (não o texto) e repete a ação até ela pegar.
-  await ate(`(() => { const s = document.querySelector('[data-mover="api-pagamentos/estorno-mesmo-meio"]'); if (!s) return false; s.value = "produto"; s.dispatchEvent(new Event("change")); return true; })()`);
-  await ate(`!!document.querySelector("[data-aprovar]")`);
+test("conferir o endereçamento (a tela Memória saiu em 04/11; a rota segue): mover de mente, conferir e aprovar", { skip: pular }, async () => {
+  const r = await fetch(b.url + "/api/memoria/mentes/mover", { method: "POST", headers: { "content-type": "application/json", origin: b.url }, body: JSON.stringify({ chave: "api-pagamentos/estorno-mesmo-meio", mente: "produto" }) });
+  assert.ok(r.ok, "mover respondeu " + r.status);
   const m = mentes();
   assert.equal(m.mapa["api-pagamentos/estorno-mesmo-meio"].mente, "produto");
   assert.equal(m.mapa["api-pagamentos/estorno-mesmo-meio"].confianca, "dono");
   assert.equal(m.status, "proposta", "mexeu: precisa aprovar de novo");
-  await ate(`(() => { const b = document.querySelector("[data-aprovar]"); if (!b) return false; b.click(); return true; })()`);
+  assert.ok((await fetch(b.url + "/api/memoria/mentes/aprovar", { method: "POST", headers: { "content-type": "application/json", origin: b.url }, body: "{}" })).ok);
   for (let i = 0; i < 40 && mentes().status !== "aprovada"; i++) await esperar(100);
   assert.equal(mentes().status, "aprovada");
-  assert.deepEqual(nav.erros, []);
 });
 
 test("conversa: ⏹ para a resposta que demora; 🧹 começa fio novo (com confirmação) e limpa a tela", { skip: pular }, async () => {
   await abrir("#/c/demo");
   await nav.avaliar(`(() => { const e = document.querySelector("#convIn"); e.value = "pense bastante"; e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); })()`);
   await ate(`[...document.querySelectorAll("button")].some((x) => /parar/.test(x.textContent))`);
+  // A caixa nunca trava: com a resposta no meio, escrever e mandar continua valendo — e a mensagem espera a vez.
+  assert.equal(await nav.avaliar(`document.querySelector("#convIn").disabled || document.querySelector("#convBtn").disabled || document.querySelector("#clipeConv").disabled`), false);
+  await nav.avaliar(`(() => { const e = document.querySelector("#convIn"); e.value = "pensei mais uma"; e.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); })()`);
+  await ate(`document.querySelector("#timeline").innerText.includes("enviada durante a resposta") && /1 na vez/.test(document.querySelector(".chead").innerText)`);
+  assert.equal(await nav.avaliar(`document.querySelector("#convIn").value`), "", "a caixa esvazia na hora, pronta para a próxima");
   await ate(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /parar/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
-  await ate(`(async () => !(await (await fetch("/api/conversa/demo")).json()).busy)()`);
+  // ⏹ corta a resposta atual; a que esperava segue logo depois.
+  await ate(`(async () => { const x = await (await fetch("/api/conversa/demo")).json(); return !x.busy && x.events.some((e) => e.t === "resultado" && e.texto === "ok"); })()`);
   await ate(`[...document.querySelectorAll("button")].some((x) => /novo fio/.test(x.textContent))`);
   await ate(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /novo fio/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
   await ate(`(async () => (await (await fetch("/api/conversa/demo")).json()).events.length === 0)()`);
@@ -84,12 +87,16 @@ test("busca: clicar numa busca recente refaz a consulta", { skip: pular }, async
   await ate(`!!document.querySelector(".bres") || document.body.innerText.includes("Nada")`);
 });
 
-test("📦 na ficha: clicar numa memória do romaneio abre ela na Memória", { skip: pular }, async () => {
+test("📦 na ficha: clicar numa memória do romaneio abre a página numa janela (a tela Memória saiu em 04/11)", { skip: pular }, async () => {
   await abrir("#/t/12");
   await ate(`!!document.querySelector(".ev.romaneio")`);
   await ate(`(() => { const d = document.querySelector(".ev.romaneio"); if (!d) return false; d.open = true; const b = document.querySelector(".rom-lista button"); if (!b) return false; b.click(); return true; })()`);
-  await ate(`!!document.querySelector("#memoria") && !!document.querySelector("#grafoPagina h3")`);
-  assert.match(await nav.avaliar(`document.querySelector("#grafoPagina h3").textContent`), /Webhook do Pix tem que ser idempotente/);
+  await ate(`!!document.querySelector("#memDialogo[open] h3")`);
+  assert.match(await nav.avaliar(`document.querySelector("#memDialogo h3").textContent`), /Webhook do Pix tem que ser idempotente/);
+  assert.equal(await nav.avaliar(`location.hash`), "#/t/12", "a ficha continua atrás da janela");
+  await nav.avaliar(`document.querySelector("#memDialogo .mem-fechar").click()`);
+  await ate(`!document.querySelector("#memDialogo[open]")`);
+  assert.deepEqual(nav.erros, []);
 });
 
 test("📎 PDF entra como ícone + nome, e o × tira o anexo antes de enviar", { skip: pular }, async () => {
@@ -104,15 +111,18 @@ test("📎 PDF entra como ícone + nome, e o × tira o anexo antes de enviar", {
   await ate(`!document.querySelector("#anexosIncluir .anexo")`);
 });
 
-test("Status: cada container com o estado certo (saudável, concluído, doente, parado com erro)", { skip: pular }, async () => {
-  await abrir("", { tab: "monitoring" });
-  await ate(`document.querySelectorAll('.service-card[title^="loja-"]').length === 4`, 20000);
-  const cartoes = await nav.avaliar(`Object.fromEntries([...document.querySelectorAll('.service-card[title^="loja-"]')].map((c) => [c.title.split(" · ")[0], c.dataset.state + " | " + c.innerText.replace(/\\s+/g, " ")]))`);
-  assert.match(cartoes["loja-api-1"], /Saudável.*0,41% · 25 MB/);
-  assert.match(cartoes["loja-migrar-1"], /Concluído/, "exited(0) é serviço de rodar uma vez, não problema");
-  assert.match(cartoes["loja-fila-1"], /^offline|doente|Doente/i);
-  assert.match(cartoes["loja-worker-1"], /Parado · erro 137/);
-  assert.deepEqual(nav.erros, []);
+test("Status: cada container com o estado certo no /api/monitoring (a tela saiu em 04/11; o painel do monitor lê esta rota)", { skip: pular }, async () => {
+  let cs = [];
+  for (let i = 0; i < 130 && cs.filter((c) => /^loja-/.test(c.nome)).length < 4; i++) {
+    const m = (await b.api("GET", "/api/monitoring")).json;
+    cs = [...(m.docker?.mac?.containers || []), ...(m.docker?.atena?.containers || [])];
+    await esperar(150);
+  }
+  const c = Object.fromEntries(cs.filter((x) => /^loja-/.test(x.nome)).map((x) => [x.nome, x]));
+  assert.equal(c["loja-api-1"].saude, "saudavel");
+  assert.equal(c["loja-migrar-1"].codigo, 0, "exited(0) é serviço de rodar uma vez");
+  assert.equal(c["loja-fila-1"].saude, "doente");
+  assert.equal(c["loja-worker-1"].codigo, 137);
 });
 
 test("⇪ Mesclar e publicar: com comando declarado, pede confirmação MOSTRANDO o comando — e só então entra na fila", { skip: pular }, async () => {

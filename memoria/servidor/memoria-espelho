@@ -1,0 +1,32 @@
+#!/bin/bash
+# O espelho da memória NO SERVIDOR (#255): o mesmo ~/…/Memoria/ai-memory que o memoria-obsidian monta no Mac,
+# lido direto do wiki do ai-memory desta máquina — é dele que o board lê o grafo, o Galpão, o romaneio, o inventário
+# e as "últimas memórias salvas" do Controle. Só LEITURA no ai-memory: um rsync dele para cá, nada volta.
+#   ~/Memoria/ai-memory/<projeto>/   nomes legíveis (o `project:` do _meta.md), sem _lint/ nem _meta.md
+#   ~/Memoria/.espelho-ok            marca do último espelho que deu certo (o board lê a hora dela)
+# Quem roda: o timer do usuário memoria-espelho.timer, a cada 10 min (o board com BOARD_SERVIDOR=local não roda nada).
+# O wiki é do usuário ai-memory (750): lido pelo `sudo -n rsync`, copiado com o dono deste usuário.
+set -uo pipefail
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+COFRE="${MEMORIA_COFRE:-$HOME/Memoria}"; CACHE="${MEMORIA_CACHE:-$HOME/.local/share/memoria-espelho/wiki}"
+ORIGEM="${MEMORIA_WIKI:-/var/lib/ai-memory/wiki}"
+SUDO="${MEMORIA_SUDO-sudo -n}"                              # vazio = sem sudo (o teste usa um wiki de mentira)
+FORA="teste-captura projeto-troca"                          # projetos de teste (25/09) fora do espelho, como no Mac
+umask 077
+mkdir -p "$COFRE/ai-memory" "$CACHE" && chmod 700 "$COFRE" "$CACHE"
+$SUDO rsync -a --delete --exclude .git --chown="$(id -u):$(id -g)" "$ORIGEM/" "$CACHE/" \
+  || { echo "$(date '+%F %T') não consegui ler o wiki do ai-memory ($ORIGEM)" >&2; exit 1; }
+usados=" "
+for ws in "$CACHE"/*/; do
+  for p in "$ws"*/; do
+    [ -f "$p/_meta.md" ] || continue
+    nome=$(grep -m1 -E "^project:" "$p/_meta.md" | cut -d: -f2- | tr -d ' ')
+    [ -n "$nome" ] || continue; case " $FORA " in *" $nome "*) continue;; esac
+    case "$nome" in */*|.*) continue;; esac                 # nome que sairia da pasta não vira pasta
+    alvo="$nome"; n=2; while [[ "$usados" == *" $alvo "* ]]; do alvo="$nome-$n"; n=$((n+1)); done; usados="$usados$alvo "
+    rsync -a --delete --exclude "_lint/" --exclude "_meta.md" "$p" "$COFRE/ai-memory/$alvo/"
+  done
+done
+for d in "$COFRE"/ai-memory/*/; do [ -d "$d" ] || continue; b=$(basename "$d"); [[ "$usados" == *" $b "* ]] || rm -rf "$d"; done
+touch "$COFRE/.espelho-ok"
+echo "$(date '+%F %T') espelho atualizado: $(find "$COFRE/ai-memory" -name '*.md' | wc -l | tr -d ' ') páginas"

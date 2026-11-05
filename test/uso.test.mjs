@@ -1,10 +1,10 @@
 // Usage and quota tests: the plan of each engine read from its REAL output (Claude's /usage text, agy's "remaining" table,
 // Codex's rate_limits in the session file), the "no quota" decision that switches engines BEFORE a task starts, the reviewer's
-// model when it has to run elsewhere, and the Consumo screen (cards, SEM COTA, the Trocar button).
+// model when it has to run elsewhere, and the compact plan number in the header (the Consumo screen left on 04/11).
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join, dirname } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, utimesSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { criarCaixa, criarProjeto, subirBoard, limparCaixa, esperar, esperarStatus, chamadas } from "./ajuda.mjs";
 import { abrirNavegador, CHROME } from "./navegador.mjs";
@@ -36,11 +36,12 @@ Claude and GPT models\tWeekly Limit Remaining\t100%\t2026-10-04T13:07:57Z
 Claude and GPT models\tFive Hour Limit Remaining\t100%\t2026-09-27T18:07:57Z`;
 const RL_CODEX = { limit_id: "codex", primary: { used_percent: 50, window_minutes: 10080, resets_at: 1791048121 }, secondary: null, plan_type: "prolite" };
 
-async function preparar({ cenario = {}, env = {}, codex = RL_CODEX } = {}) {
+async function preparar({ cenario = {}, env = {}, codex = RL_CODEX, antes } = {}) {
   const caixa = criarCaixa(); criarProjeto(caixa, "demo");
   caixa.cenario({ usoClaude: USO_CLAUDE(), usoGemini: USO_GEMINI, ...cenario });
   if (codex) { const d = join(caixa.home, ".codex", "sessions", "2026", "09", "25"); mkdirSync(d, { recursive: true });
     writeFileSync(join(d, "rollout-2026-09-25T08-50-12-x.jsonl"), JSON.stringify({ type: "event_msg", payload: { type: "token_count", rate_limits: codex } }) + "\n"); }
+  if (antes) antes(caixa);
   const b = await subirBoard(caixa, { BOARD_RELOGIO: String(Date.parse("2026-09-27T12:00:00Z")), TZ: "America/Sao_Paulo", ...env }, { nodeArgs: ["--import", RELOGIO] });
   atual.push(async () => { await b.fim(); limparCaixa(caixa); });
   const uso = (await b.api("GET", "/api/claude-uso?fresco")).json;
@@ -86,23 +87,44 @@ test("Claude sem cota na hora da conferência: revisor e QA rodam em outro motor
   assert.ok(!cx.some((c) => c.args.includes("sonnet")), "o 400 da #127: mandar 'sonnet' para o Codex");
 });
 
-test("tela de Consumo: um cartão por motor, SEM COTA em vermelho, e o Trocar passa o que espera", { skip: !CHROME && "sem Chrome" }, async () => {
+test("plano no topo (a tela Consumo saiu em 04/11): número compacto do Claude no cabeçalho, sem clique, e a troca de motor pela rota", { skip: !CHROME && "sem Chrome" }, async () => {
   const { b } = await preparar({ env: { BOARD_MOTORES_RESERVA: "codex" }, cenario: { usoClaude: USO_CLAUDE(99, 60) } });
   await b.api("POST", "/api/fila/pausar");
   const [t] = (await b.api("POST", "/api/tasks", { text: "esperando no claude", project: "demo", queue: true, motor: "claude" })).json.tasks;
   const nav = await abrirNavegador({ agora: Date.parse("2026-09-27T12:00:00Z") }); atual.push(() => nav.fechar());
   await nav.carregar(b.url + "/?a"); await nav.avaliar(`localStorage.setItem("board.tab", JSON.stringify("consumo"))`);
   await nav.carregar(b.url + "/?b"); await nav.quieto({ min: 800 });
-  const cartoes = await nav.avaliar(`[...document.querySelectorAll(".mcard")].map((c) => ({ esgotado: /SEM COTA/.test(c.innerText), texto: c.innerText.replace(/\\s+/g, " ").slice(0, 120) }))`);
-  assert.equal(cartoes.length, 4, "claude, gemini, codex e opencode");
-  assert.equal(cartoes.filter((c) => c.esgotado).length, 1, "só o Claude está sem cota: " + JSON.stringify(cartoes));
-  assert.ok(cartoes.find((c) => c.esgotado).texto.includes("Claude"));
-  const bt = await nav.avaliar(`(() => { const b = [...document.querySelectorAll(".mcard button")].find((x) => /Trocar/.test(x.textContent)); if (!b) return false; b.click(); return true; })()`);
-  assert.ok(bt, "o cartão do Claude tem o botão Trocar");
-  await esperar(300);
-  await nav.avaliar(`[...document.querySelectorAll(".mcard button")].find((x) => /Codex/.test(x.textContent) && x.closest(".mdest, .mcard")).click()`);
-  for (let i = 0; i < 40 && (await b.api("GET", `/api/tasks/${t.id}`)).json.task.motor !== "codex"; i++) await esperar(150);
+  let cab = "";
+  for (let i = 0; i < 80 && !/Claude sessão/.test(cab); i++) { cab = await nav.avaliar(`document.querySelector("header .uso-cab")?.innerText || ""`); await esperar(150); }
+  assert.match(cab, /^Claude sessão 99% · semana 60%$/, "como na barra do tmux: " + cab);
+  assert.equal(await nav.avaliar(`document.querySelector("header .uso-cab i").className`), "limite", "99% pinta de vermelho");
+  assert.equal(await nav.avaliar(`document.querySelector("header .uso-cab").getAttribute("onclick")`), null, "não leva a tela nenhuma");
+  assert.equal(await nav.avaliar(`document.querySelectorAll(".mcard, #consumo").length`), 0, "a aba Consumo guardada caiu no quadro");
+  assert.ok(await nav.avaliar(`!!document.querySelector("#newTask")`));
+  assert.equal(await nav.avaliar(`JSON.parse(localStorage.getItem("board.tab"))`), "ativas");
+  const r = await b.api("POST", "/api/motores/passar", { de: "claude", para: "codex" });
+  assert.deepEqual(r.json.trocadas, [t.id]);
   assert.equal((await b.api("GET", `/api/tasks/${t.id}`)).json.task.motor, "codex", "a tarefa que esperava foi para o Codex");
-  assert.match(nav.dialogos.join("\n"), /Passar 1 tarefa\(s\) de Claude para Codex/, "com confirmação antes");
   assert.deepEqual(nav.erros, []);
+});
+
+test("Codex SEM CRÉDITO: vale a sessão mexida por último (não a de nome mais novo) e crédito zerado é 100%", async () => {
+  // Formato REAL (23/10/2026): sessão aberta em 16/10 que continuou gravando — sem percentual, crédito 0 e o erro no fim.
+  const { uso } = await preparar({ codex: null, antes: (caixa) => {
+    const velha = join(caixa.home, ".codex", "sessions", "2026", "10", "19"), viva = join(caixa.home, ".codex", "sessions", "2026", "10", "16");
+    mkdirSync(velha, { recursive: true }); mkdirSync(viva, { recursive: true });
+    const a = join(velha, "rollout-2026-10-19T08-00-00-a.jsonl");
+    writeFileSync(a, JSON.stringify({ type: "event_msg", payload: { type: "token_count", rate_limits: { ...RL_CODEX, primary: { used_percent: 39, window_minutes: 10080 } } } }) + "\n");
+    utimesSync(a, new Date("2026-10-19T18:24:08Z"), new Date("2026-10-19T18:24:08Z"));
+    writeFileSync(join(viva, "rollout-2026-10-16T10-14-03-b.jsonl"), [
+      { type: "event_msg", payload: { type: "token_count", rate_limits: { limit_id: "premium", primary: null, secondary: null,
+        credits: { has_credits: false, unlimited: false, balance: "0" }, plan_type: "plus", rate_limit_reached_type: null } } },
+      { type: "event_msg", payload: { type: "task_complete", error: { message: "You’ve hit your usage limit. Upgrade to Pro or try again later." } } },
+    ].map((x) => JSON.stringify(x)).join("\n") + "\n");
+  } });
+  const x = uso.motores.codex;
+  assert.equal(x.modo, "plano plus", "a sessão viva, não a de 19/10");
+  assert.deepEqual(x.limites.map((l) => [l.nome, l.pct]), [["Codex · créditos", 100]]);
+  assert.equal(x.semCota, true, "o cartão fica vermelho e o board não manda tarefa para o Codex");
+  assert.match(x.nota, /sem crédito \(saldo 0\).*hit your usage limit/);
 });

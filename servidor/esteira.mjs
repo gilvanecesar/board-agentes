@@ -4,10 +4,10 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { C, DATA, DEPLOY_FILE, DEPLOY_TIMEOUT_MS, GATE_FILE, GATE_TIMEOUT_MS, MOTOR_PADRAO, PRODUCAO, QA_LIGADO, QA_MODEL, QA_TIMEOUT_MS, RETRY_DELAY_MS, RETRY_MAX, REVIEW_MODEL, REVIEW_ROUNDS, REVISOR_LIGADO, cut, now, stripAnsi } from "./config.mjs";
 import { broadcast, gates, logEvent, save, state } from "./estado.mjs";
-import { criarCopia, haMudancas, nomeDeAgente, projectOf } from "./projetos.mjs";
+import { criarCopia, estadoDaArvore, haMudancas, nadaParaEntregar, nomeDeAgente, projectOf } from "./projetos.mjs";
 import { ROMANEIO_LIGADO, montarRomaneio, sentidoDoPedido } from "./memoria.mjs";
 import { MOTORES, runAgent, runMotor } from "./motores.mjs";
-import { qaRules, reviewerRules } from "./regras.mjs";
+import { lerParecer, parecerDaRodada, pareceresAbertos, pedidoDeConserto, qaRules, reviewerRules, textoDosPareceres } from "./regras.mjs";
 import { passarBastao, proximoMotorComCota, textoDaPassagem } from "./uso.mjs";
 import { anexosValidos, comAnexos } from "./anexos.mjs";
 
@@ -50,13 +50,29 @@ export function runGate(task, project, comando, limite = GATE_TIMEOUT_MS) {
     gates.set(task.id, cp);
     let buf = "", estourou = false;
     const timer = setTimeout(() => { estourou = true; killGroup(cp); }, limite);
-    const ler = (d) => { buf += stripAnsi(String(d)); if (buf.length > 400000) buf = buf.slice(-200000); };
+    // O parecer guarda só o rabo da saída (60 linhas). Com centenas de testes, o `not ok` do que falhou fica lá em cima e
+    // a reprova chegava sem dizer QUAL teste quebrou (#351: duas reprovas assim). Cada `not ok` e as linhas seguintes
+    // (onde o node:test põe local e erro) são guardados à parte, conforme a saída passa, e vão no começo do parecer.
+    const falhas = [];
+    let resto = "", pegar = 0;
+    const olhar = (txt) => {
+      const linhas = (resto + txt).split(/\r?\n/);
+      resto = linhas.pop();
+      for (const l of linhas) {
+        if (/^\s*not ok\b/.test(l) && falhas.length < 200) { pegar = 13; falhas.push(""); }
+        if (pegar > 0) { pegar--; if (l.trim()) falhas.push(l.slice(0, 400)); }
+      }
+    };
+    const ler = (d) => { const t = stripAnsi(String(d)); olhar(t); buf += t; if (buf.length > 400000) buf = buf.slice(-200000); };
     cp.stdout.on("data", ler); cp.stderr.on("data", ler);
     cp.on("error", (e) => { buf += "\n" + e.message; });
     cp.on("close", (code) => {
       clearTimeout(timer); gates.delete(task.id);
-      const saida = buf.split(/\r?\n/).filter((l) => l.trim()).slice(-60).join("\n");
-      done({ ok: !estourou && code === 0, code, saida: estourou ? saida + `\n(passou de ${limite / 60000} min e foi interrompido)` : saida });
+      olhar("\n");
+      let saida = buf.split(/\r?\n/).filter((l) => l.trim()).slice(-60).join("\n");
+      const quebrados = falhas.join("\n").trim();
+      if (quebrados) saida = `Testes que falharam (not ok):\n${quebrados}\n\n… o fim da saída:\n${saida}`;
+      done({ ok: !estourou && code === 0, code, estourou, saida: estourou ? saida + `\n(passou de ${limite / 60000} min e foi interrompido)` : saida });
     });
   });
 }
@@ -123,44 +139,77 @@ export function applyRunInfo(task, r) {
   task.durationMs = (task.durationMs || 0) + (r.dur || 0);
 }
 
+/** O veredito de revisor e QA: APROVADO, REPROVADO ou null, que nunca aprova. Quem decide é `lerParecer`: fail-closed, inclusive sem a classificação GRAVE × MENOR. */
+export const lerVeredito = (texto) => lerParecer(texto).veredito;
+
+const TETO_SOBRAS = 30;
 /**
- * O veredito de revisor e QA. Prefere a LINHA que é só a palavra: o modelo às vezes escreve uma
- * frase antes (visto no teste do QA em 16/09), e procurar a primeira ocorrência solta leria
- * "o revisor tinha APROVADO, mas…" como aprovação. Sem veredito legível → null (fail-closed).
+ * Registra o que o revisor ou o QA disse e guarda os defeitos menores em `task.sobras`, para o dono decidir (#300). A última leitura de cada
+ * papel substitui a anterior: ele releu a entrega inteira, e o que saiu da lista pode ter sido consertado. Parecer ilegível não mexe nas sobras.
  */
-export function lerVeredito(texto) {
-  const t = String(texto || "");
-  const linha = t.match(/^[\s*_#>`-]*(APROVADO|REPROVADO)[\s*_.!`]*$/im);
-  if (linha) return linha[1].toUpperCase();
-  const m = t.match(/\b(APROVADO|REPROVADO)\b/i);
-  return m ? m[1].toUpperCase() : null;
+function registrarParecer(task, quem, r) {
+  const parecer = parecerDaRodada(r.resultados?.length ? r.resultados : [r.result]);
+  const p = lerParecer(parecer);
+  // APROVADO com texto solto no fim de vários turnos: o board não sabe se ele mudou de ideia. Não é parecer sem classificar, é conferência sem resposta legível (#306).
+  const rotulo = p.semClassificacao ? (r.resultados?.length > 1 ? null : "SEM CLASSIFICAÇÃO") : p.veredito;
+  if (p.veredito) {
+    const novas = p.menores.slice(0, TETO_SOBRAS).map((texto) => ({ quem, texto: cut(texto, 600), em: now() }));
+    if (p.menores.length > TETO_SOBRAS) novas.push({ quem, texto: `… e mais ${p.menores.length - TETO_SOBRAS}: o parecer inteiro está na linha do tempo`, em: now() });
+    task.sobras = [...(task.sobras || []).filter((s) => s.quem !== quem), ...novas];
+  }
+  const texto = parecer || r.error || "";
+  logEvent(task.id, { t: quem, veredito: rotulo || "SEM VEREDITO", texto, custo: r.cost, ...(p.veredito && p.menores.length ? { menores: p.menores.length } : {}) });
+  return { aprovado: p.veredito === "APROVADO", veredito: rotulo, texto, ...(rotulo ? {} : { semVeredito: true, erro: r.error }) };
 }
 
-/** Devolve o veredito do revisor. Sem veredito legível é REPROVA — fail-closed. */
-export async function runReviewer(task, project) {
+/**
+ * O fim comum aos dois papéis. "Não rodou" é infraestrutura, e segue a retentativa: motor que nem abriu sessão, que disse que falhou, ou cota (repetir daria no mesmo muro).
+ * Papel que abriu sessão e foi cortado sem resposta (teto do board, 143) RODOU e não deu veredito: com o segundo plano proibido, é por aqui que o QA longo termina (#306).
+ */
+function fimDoPapel(task, quem, nome, r) {
+  const naoRodou = () => { if (r.cota) task.erroCota = true; return { falhou: true, motivo: `${nome} não rodou: ${cut(r.error, 160)}` }; };
+  if (r.error && !String(r.result || "").trim() && (r.cota || r.motorErrou || !r.sessionId)) return naoRodou();
+  const v = registrarParecer(task, quem, r);
+  return v.semVeredito && r.cota ? naoRodou() : v;
+}
+
+/** Devolve o veredito do revisor. `aviso` é a volta depois de uma rodada sem veredito (#306). */
+export async function runReviewer(task, project, aviso = "") {
   const r = await runMotor(task,
     [`Revise a tarefa #${task.id}.`, "", "O que o dono pediu:", comAnexos(task.text, task.anexos), "",
-      "O que o agente respondeu que fez:", cut(task.result || "(sem resumo)", 2000)].join("\n"),
+      "O que o agente respondeu que fez:", cut(task.result || "(sem resumo)", 2000), ...(aviso ? ["", aviso] : [])].join("\n"),
     { quem: "revisor", regras: reviewerRules(task, project), modelo: REVIEW_MODEL, tools: "Read,Grep,Glob,Bash" });
   applyRunInfo(task, r);
-  if (r.error && !String(r.result || "").trim()) { if (r.cota) task.erroCota = true; return { falhou: true, motivo: `o revisor não rodou: ${cut(r.error, 160)}` }; }
-  const veredito = lerVeredito(r.result);
-  const ev = { t: "revisor", veredito: veredito || "SEM VEREDITO", texto: r.result || r.error || "", custo: r.cost };
-  logEvent(task.id, ev);
-  return { aprovado: veredito === "APROVADO", veredito, texto: r.result || "" };
+  return fimDoPapel(task, "revisor", "o revisor", r);
 }
 
-/** Devolve o veredito do QA. Sem veredito legível é REPROVA — fail-closed, igual ao revisor. */
-export async function runQA(task, project) {
+/** Devolve o veredito do QA, igual ao revisor. */
+export async function runQA(task, project, aviso = "") {
   const r = await runMotor(task,
     [`Teste a entrega da tarefa #${task.id}.`, "", "O que o dono pediu:", comAnexos(task.text, task.anexos), "",
-      "O que o agente respondeu que fez:", cut(task.result || "(sem resumo)", 2000)].join("\n"),
+      "O que o agente respondeu que fez:", cut(task.result || "(sem resumo)", 2000), ...(aviso ? ["", aviso] : [])].join("\n"),
     { quem: "qa", regras: qaRules(task, project), modelo: QA_MODEL, tools: "Read,Grep,Glob,Bash", limite: QA_TIMEOUT_MS });
   applyRunInfo(task, r);
-  if (r.error && !String(r.result || "").trim()) { if (r.cota) task.erroCota = true; return { falhou: true, motivo: `o QA não rodou: ${cut(r.error, 160)}` }; }
-  const veredito = lerVeredito(r.result);
-  logEvent(task.id, { t: "qa", veredito: veredito || "SEM VEREDITO", texto: r.result || r.error || "", custo: r.cost });
-  return { aprovado: veredito === "APROVADO", veredito, texto: r.result || r.error || "" };
+  return fimDoPapel(task, "qa", "o QA", r);
+}
+
+/**
+ * Um papel da conferência, com a volta de quem terminou sem veredito legível (#306: na #305 o QA ficou esperando rodadas em segundo plano até o
+ * teto do board, e "Aguardando a notificação" virou reprova: duas rodadas do agente sem nada a consertar, e uma tentativa). Isso diz que a CONFERÊNCIA
+ * não terminou, nada sobre o trabalho: não abre conserto nem gasta tentativa, e o papel roda de novo UMA vez, sozinho.
+ * Sem veredito de novo continua fail-closed: erro, sem repetir, e `task[quem]` fica não aprovado para a trava do Mesclar (#188) ver.
+ */
+async function parecerDe(task, project, quem, rodada) {
+  const rodar = quem === "revisor" ? runReviewer : runQA, nome = quem === "revisor" ? "o revisor" : "o QA";
+  const v = await rodar(task, project);
+  if (!v.semVeredito || task.status !== "rodando") return v;
+  logEvent(task.id, { t: "solto", texto: `↻ ${nome} terminou sem veredito${v.erro ? ` (${cut(v.erro, 100)})` : ""}: a conferência não terminou, roda de novo uma vez, sem voltar ao agente e sem gastar tentativa` });
+  const aviso = [`⚠️ A rodada anterior desta conferência terminou sem veredito${v.erro ? ` (${cut(v.erro, 100)})` : ""}.${v.texto && v.texto !== v.erro ? ` Ela só disse: "${cut(v.texto, 200)}".` : ""}`,
+    "Faça menos, em primeiro plano, e termine com o parecer no formato pedido, com o que conseguiu conferir. Sem veredito de novo, a tarefa para e o dono é chamado."].join("\n");
+  const outra = await rodar(task, project, aviso);
+  if (!outra.semVeredito || task.status !== "rodando") return outra;
+  task[quem] = { veredito: "SEM VEREDITO", rodadas: rodada, em: now() };
+  return { falhou: true, motivo: `${nome} terminou duas vezes sem veredito: a entrega não foi reprovada, mas também não foi conferida. Veja a linha do tempo e use ▶ Rodar de novo` };
 }
 
 /** Marca em que etapa a tarefa está (agente → portão → revisor → QA) e avisa a tela. */
@@ -169,7 +218,7 @@ export function etapa(task, nome) { task.etapa = nome; task.updatedAt = now(); s
 export function finaliza(task, status, motivo) {
   task.status = status; task.busy = false; task.etapa = null; task.finishedAt = now(); task.updatedAt = now();
   if (status === "erro") task.error = motivo || task.error;
-  if (status === "executada") { task.tentativas = 0; task.retentativa = null; }
+  if (status === "executada") { task.tentativas = 0; task.retentativa = null; task.entregaPendente = false; task.semMesclar = false; }
   // ⚡ aprovado: o runner junta na pasta principal assim que ela estiver livre.
   if (status === "executada" && task.worktree && !task.worktree.producao && !task.worktree.removida) task.worktree.juntar = "pendente";
   logEvent(task.id, { t: "fim", status, motivo: motivo || "" });
@@ -193,6 +242,8 @@ export function classifyError(motivo, task) {
   if (task?.erroCota) return "cota";
   // Barrado por permissão: tentar de novo dá no mesmo muro. Nunca repete sozinho (ver runTask).
   if (/bloqueado por permissão/.test(m) || task?.negadas?.length) return "manual";
+  // A conferência que terminou duas vezes sem veredito já teve a sua volta: não é defeito do agente, e a tentativa não é gasta (#306).
+  if (/duas vezes sem veredito/.test(m)) return "manual";
   if (/cc_cli_limit_message/.test(m) || /^you'?ve hit your [\w ]*limit\b/i.test(m)) return "cota";
   if (/usage limit|rate limit|quota (exceeded|reached)|out of credits|limite de uso/i.test(m)) return "cota";
   if (/mescl|publica|deploy|URL do PR|URL de PR/i.test(m)) return "manual";
@@ -221,6 +272,7 @@ export function scheduleRetry(task, motivo) {
     const bloqueio = /bloqueado por permissão/.test(String(motivo || "")) || task.negadas?.length;
     logEvent(task.id, { t: "retentativa", estado: "manual", texto: bloqueio
       ? "barrado por permissão: tentar de novo dá no mesmo muro — não repito sozinho; libere o acesso ou mude a tarefa"
+      : /duas vezes sem veredito/.test(String(motivo || "")) ? "a conferência já rodou de novo e continuou sem veredito — não repito sozinho, e nenhuma tentativa foi gasta"
       : "erro em mesclar/publicar não é repetido sozinho — confira e decida" });
     return;
   }
@@ -264,29 +316,53 @@ export async function runTask(task) {
     catch (e) { task.status = "rodando"; return finaliza(task, "erro", "não consegui criar a cópia isolada: " + cut(String(e.stderr || e.message), 300)); }
   }
   const project = projectOf(task);
+  // Rodada que não voltou: o board caiu com o agente no meio (SIGTERM, kill -9, luz) e nada depois do `runAgent` rodou. A foto da
+  // pasta é tirada ANTES da rodada por isso; pasta diferente (ou sem git, onde não há foto) = o agente escreveu e a conferência deve.
+  if (task.rodadaAberta && (!task.rodadaAberta.arvore || estadoDaArvore(project.dir) !== task.rodadaAberta.arvore)) task.conferenciaPendente = true;
+  // A aprovação vale para a pasta que foi aprovada: se ela mudou enquanto a entrega devia (chat, ou o próprio agente da entrega cortado
+  // depois de escrever), ou se não há foto, confere de novo, em vez de mesclar com o veredito velho. Commit parcial da entrega também reconfere.
+  if (task.entregaPendente && !task.conferenciaPendente && (!task.entregaPendente.arvore || estadoDaArvore(project.dir) !== task.entregaPendente.arvore)) task.conferenciaPendente = true;
+  task.rodadaAberta = { arvore: estadoDaArvore(project.dir) };
   // Retomada depois de erro: a mesma sessão continua de onde parou, em vez de receber a tarefa
   // inteira de novo e recomeçar (o que repetiria o trabalho e, no caso de tempo, o mesmo buraco).
   const erroAnterior = task.retomar && task.sessionId ? task.error : null;
   const bastao = task.passagem && !task.sessionId ? task.passagem : null;
+  // ⚡ Conflito na junção: a cópia recebeu a pasta atual e o agente resolve (o pedido vem pronto de juntar.mjs).
+  const conserto = !bastao && task.consertoJuntar?.pedido ? task.consertoJuntar : null;
+  if (task.consertoJuntar) task.consertoJuntar = null;
+  // PR em conflito ou com check falhando (a vigia, #279): a rodada só atualiza o PR, e a marca fica até o GitHub confirmar.
+  const atualizaPr = task.prVigia?.estado === "atualizando" ? task.prVigia : null;
   // Guarda a reprovação anterior ANTES de limpar: rodada que não mexe em nada não a resolve.
   const reprovaAnterior = task.reprovaPendente || task.revisor?.veredito === "REPROVADO" || task.qa?.veredito === "REPROVADO";
+  // Aqui também, antes de limpar: `conferenciaDevida` lê os vereditos que a linha abaixo apaga.
+  const parecer = parecerDaVolta(task);
   task.retomar = false;
   task.status = "rodando"; task.busy = true; task.startedAt = now(); task.updatedAt = now(); task.error = null;
-  task.gate = null; task.revisor = null; task.qa = null;
+  // Conferência já aprovada e só a entrega devendo: os vereditos ficam, porque valem para a entrega retomada (mesclar e a ficha leem).
+  // Se a rodada mudar arquivo, a marca liga e a esteira os apaga antes de conferir de novo.
+  if (!task.entregaPendente || task.conferenciaPendente) { task.gate = null; task.revisor = null; task.qa = null; }
   etapa(task, "agente");
-  logEvent(task.id, { t: "inicio", titulo: (erroAnterior ? "retomada — " : "") + task.title, projeto: project.slug, dir: project.dir });
+  logEvent(task.id, { t: "inicio", titulo: (conserto ? "resolver conflito da junção — " : atualizaPr ? "atualizar o PR — " : erroAnterior ? "retomada — " : "") + task.title, projeto: project.slug, dir: project.dir });
 
   const marca = marcarInstante();
-  const prompt = bastao ? comAnexos(textoDaPassagem(task, MOTORES[bastao.de]?.rotulo || bastao.de, bastao.para, bastao.motivo), task.anexos)
+  const base = bastao ? comAnexos(textoDaPassagem(task, MOTORES[bastao.de]?.rotulo || bastao.de, bastao.para, bastao.motivo), task.anexos)
+    : conserto ? conserto.pedido
     : erroAnterior
     ? ["A rodada anterior desta tarefa terminou em ERRO:", erroAnterior, "",
         "Continue de onde parou e TERMINE a tarefa. Não recomece do zero e não refaça o que já está feito.",
         "Se o erro foi tempo esgotado: vá direto ao que falta e não abra investigação fora do escopo."].join("\n")
+    : atualizaPr ? atualizaPr.pedido
     : comAnexos(task.text, task.anexos);
+  // Bastão e retomada falam da tarefa inteira: sem o pedido, a rodada que devia só atualizar o PR refaria o trabalho.
+  const semParecer = atualizaPr && !conserto && base !== atualizaPr.pedido ? `${base}\n\n---\n\n${atualizaPr.pedido}` : base;
+  // Toda volta com reprova em aberto leva o parecer, qualquer que seja o pedido: retomada, bastão (outro motor nunca o viu), "rodar de novo", vigia.
+  const comParecer = (texto) => (parecer ? `${texto}\n\n---\n\n${parecer}` : texto);
+  const prompt = comParecer(semParecer);
+  if (parecer) logEvent(task.id, { t: "solto", texto: "↻ o parecer da reprovação vai inteiro nesta rodada" });
   if (bastao) task.passagem = null; // o bastão só vale para a primeira rodada do novo motor
   // Romaneio: só quando o agente começa do zero (sessão nova ou outro motor). Na retomada, a sessão já tem.
   let pedido = prompt;
-  if (ROMANEIO_LIGADO && !task.sessionId && !erroAnterior) {
+  if (ROMANEIO_LIGADO && !task.sessionId && !erroAnterior && !conserto && !atualizaPr) {
     let rom = null; try { rom = montarRomaneio(task, { sentido: await sentidoDoPedido(task) }); } catch (e) { logEvent(task.id, { t: "solto", texto: "⚠ romaneio falhou: " + cut(e.message, 160) }); }
     if (rom) {
       pedido = rom.texto + "\n\n---\n\n## A tarefa\n\n" + prompt;
@@ -294,14 +370,19 @@ export async function runTask(task) {
       logEvent(task.id, { t: "romaneio", mentes: rom.mentes, itens: rom.itens, tokens: rom.tokensAprox, modo: rom.modo, semSentido: rom.semSentido });
     }
   }
-  let r = await runAgent(task, pedido, { resume: task.sessionId || undefined });
+  let r = await runAgent(task, pedido, { resume: task.sessionId || undefined, fresco: parecer ? comParecer(atualizaPr?.pedido || comAnexos(task.text, task.anexos)) : atualizaPr?.pedido });
   applyRunInfo(task, r);
+  task.rodadaAberta = null;
   if (r.cota) task.erroCota = true;
+  // No conserto da junção a cópia mudou pelas mãos do board (a pasta atual + a mescla): confere de novo mesmo que o
+  // agente não tenha tocado em nada — senão um resultado com portão vermelho voltaria para a pasta sem conferência.
+  const mexeu = r.escreveu || mexeuEmArquivo(project.dir, marca) || !!conserto;
+  // A conferência é dívida da TAREFA, não da rodada (#290): vale antes dos retornos abaixo, porque agente cortado ou parado depois de escrever também deve.
+  if (mexeu) task.conferenciaPendente = true;
   if (task.status !== "rodando") return finaliza(task, task.status, "parada pelo dono");
   if (r.error && !r.result) return finaliza(task, "erro", r.error);
   task.result = r.result;
 
-  const mexeu = r.escreveu || mexeuEmArquivo(project.dir, marca);
   // BLOQUEIO DE PERMISSÃO não é defeito de código: repetir não resolve. Em 27/09 (arquivos sob ~/.claude, "sensitive file")
   // o board fez conserto + 2 retentativas = 6 rodadas numa tarefa impossível, US$ 3–4,50 cada. Barrado e nada mudou → para e chama o dono.
   if (r.negadas?.length) {
@@ -314,17 +395,50 @@ export async function runTask(task) {
   if (!String(task.result || "").trim() && !mexeu) {
     return finaliza(task, "erro", "o motor não produziu resposta nem mexeu em arquivo — veja o histórico");
   }
-  if (reprovaAnterior && !mexeu) {
+  // Reprovação pendente e rodada sem mudança: só é "o defeito continua" se a pasta está IGUAL à da reprovação. Se mudou,
+  // o conserto foi feito numa rodada anterior e a conferência é que ficou pela metade (a #188, 08/10: o portão foi cortado
+  // por tempo depois do conserto, e o board exigia mudança que não havia a fazer — erro duas vezes, sem saída).
+  const consertoAnterior = reprovaAnterior && !mexeu && task.reprovaArvore && estadoDaArvore(project.dir) !== task.reprovaArvore;
+  if (reprovaAnterior && !mexeu && !consertoAnterior) {
     return finaliza(task, "erro", "a conferência tinha REPROVADO e esta rodada não mexeu em nada — o defeito continua de pé");
   }
-  const v = await esteira(task, project, { mexeu });
+  if (consertoAnterior) logEvent(task.id, { t: "solto", texto: "↻ esta rodada não mudou nada, mas a pasta mudou desde a reprovação: o conserto já foi feito antes — a conferência roda de novo" });
+  // Conferência cortada (QA encerrado sem veredito, portão por tempo, reinício) continua devida: sem isto, a retomada que
+  // não muda arquivo fechava como "executada" sem revisor nem QA (o agente da #286 achou, 01/11). Vale para a entrega também.
+  else if (task.conferenciaPendente && !mexeu) logEvent(task.id, { t: "solto", texto: "↻ esta rodada não mudou nada, mas a conferência ficou devendo (cortada antes do veredito): ela roda de novo" });
+  const confere = mexeu || !!consertoAnterior || !!task.conferenciaPendente;
+  const v = await esteira(task, project, { mexeu: confere });
+  return fecharConferida(task, project, v, { mexeu: confere, atualizaPr });
+}
+
+/** Fecha a tarefa de entrega por PR que não deixou nada para entregar: executada, com o resumo que o agente já deu. */
+function fecharSemEntrega(task) {
+  logEvent(task.id, { t: "solto", texto: "nada para entregar: a pasta está limpa e igual à publicada — fecha sem PR" });
+  return finaliza(task, "executada");
+}
+
+/** Liga a dívida da entrega com a foto da pasta aprovada. Sem a foto, a retomada não teria como saber para o que a aprovação vale. */
+function devendoEntrega(task, project, exigirPr) {
+  task.entregaPendente = { exigirPr: task.entregaPendente?.exigirPr ?? exigirPr, arvore: estadoDaArvore(project.dir) };
+  return task.entregaPendente;
+}
+
+/** O que vem depois da esteira, igual para a rodada do agente e para a conferência de um conserto feito no chat. */
+async function fecharConferida(task, project, v, { mexeu, atualizaPr = null }) {
   if (v.parou) return finaliza(task, task.status, "parada pelo dono");
   if (!v.ok) return finaliza(task, "erro", v.motivo);
   // Modo PR/deploy sem PR aberto: o agente fez o trabalho mas não entregou — entrega agora.
   // ⚠️ Só se a rodada MEXEU em arquivo: tarefa de diagnóstico ("pode verificar?") responde sem
   // mudar nada, e exigir PR dela virava erro (22/09/2026).
-  if (mexeu && (task.entrega === "pr" || task.entrega === "deploy") && !task.prUrl) return entregar(task, project);
-  if (task.entrega === "deploy") {
+  // A entrega também é dívida da tarefa (#290): cortada no meio, a retomada sem mudança entrega de novo, sem repetir a conferência que já aprovou.
+  if ((mexeu || task.entregaPendente) && (task.entrega === "pr" || task.entrega === "deploy") && !task.prUrl) {
+    // Nada a entregar (pasta limpa, HEAD já publicado): fecha com o resumo, sem a rodada de entrega. Sem isto, a rodada que só
+    // mexeu em arquivo ignorado (dependência instalada, rascunho apagado) pedia PR, a entrega voltava sem URL e cada ▶ repetia (#325).
+    if (nadaParaEntregar(project.dir)) return fecharSemEntrega(task);
+    return entregar(task, project, devendoEntrega(task, project, true));
+  }
+  // 🔴 Atualizar o PR nunca mescla: no modo "mesclar e publicar", a volta da vigia para antes do merge.
+  if (task.entrega === "deploy" && !atualizaPr && !task.semMesclar) {
     const p = await mesclarEPublicar(task, project);
     if (!p.ok) return finaliza(task, "erro", p.motivo);
   }
@@ -339,6 +453,7 @@ export async function runTask(task) {
 export async function esteira(task, project, { mexeu }) {
   const comando = gateCommand(project);
   let rodada = 0;
+  if (mexeu) { task.conferenciaPendente = true; task.gate = null; task.revisor = null; task.qa = null; } // só a linha `ok: true` no fim tira a marca: parada, corte e reprova deixam devendo
 
   while (true) {
     // ── portão ──────────────────────────────────────────────────────────────
@@ -348,16 +463,14 @@ export async function esteira(task, project, { mexeu }) {
       const g = await runGate(task, project, comando);
       if (task.status !== "rodando") return { parou: true };
       task.gate = { comando, ok: g.ok, code: g.code, em: now() };
-      logEvent(task.id, { t: "portao", estado: g.ok ? "passou" : "falhou", comando, code: g.code, saida: g.saida });
+      logEvent(task.id, { t: "portao", estado: g.ok ? "passou" : "falhou", comando, code: g.code, saida: g.saida, ...(g.estourou ? { cortado: true } : {}) });
       if (!g.ok) {
+        // Cortado por tempo não é teste falhando: mandar o agente "consertar" era pedir mudança que não existe.
+        if (g.estourou) return { ok: false, motivo: `o portão passou de ${GATE_TIMEOUT_MS / 60000} min e foi interrompido (${comando}) — não é teste falhando; se a bateria do projeto cresceu, aumente BOARD_PORTAO_TIMEOUT_MIN` };
         if (rodada >= REVIEW_ROUNDS) return { ok: false, motivo: `o portão reprovou (${comando})` };
         rodada++;
         etapa(task, "agente");
-        const fix = await runMotor(task,
-          ["O PORTÃO do board reprovou o seu trabalho. O comando de verificação do projeto falhou:",
-            "", "$ " + comando, g.saida.slice(-4000), "",
-            "Conserte de verdade (não desligue teste nem afrouxe conferência) e responda o que mudou."].join("\n"),
-          { resume: task.sessionId || undefined });
+        const fix = await runMotor(task, pedidoDeConserto("portao", g.saida, comando), { resume: task.sessionId || undefined });
         applyRunInfo(task, fix);
         if (task.status !== "rodando") return { parou: true };
         // ⚠️ A rodada de CONSERTO também pode estourar cota ou falhar. Ignorar isso fazia o board
@@ -373,19 +486,16 @@ export async function esteira(task, project, { mexeu }) {
     // entrega com teste instável que o portão, rodando uma vez só, deixou passar.
     if (REVISOR_LIGADO && mexeu) {
       etapa(task, "revisor");
-      const rev = await runReviewer(task, project);
+      const rev = await parecerDe(task, project, "revisor", rodada);
       if (task.status !== "rodando") return { parou: true };
       if (rev.falhou) return { ok: false, motivo: rev.motivo }; // falha de infraestrutura, não reprova o trabalho
       task.revisor = { veredito: rev.veredito, rodadas: rodada, em: now() };
-      task.reprovaPendente = !rev.aprovado; // só sai quando alguém aprovar de verdade
       if (!rev.aprovado) {
-        if (rodada >= REVIEW_ROUNDS) return { ok: false, motivo: `o revisor reprovou (${rev.veredito || "sem veredito"})` };
+        task.reprovaPendente = true; task.reprovaArvore = estadoDaArvore(project.dir); // só sai com a conferência inteira aprovada (fim da esteira)
+        if (rodada >= REVIEW_ROUNDS) return { ok: false, motivo: `o revisor reprovou (${rev.veredito})` };
         rodada++;
         etapa(task, "agente");
-        const fix = await runMotor(task,
-          ["O REVISOR do board reprovou o seu trabalho:", "", rev.texto, "",
-            "Corrija o que ele apontou e responda o que mudou. Se discordar, explique com evidência."].join("\n"),
-          { resume: task.sessionId || undefined });
+        const fix = await runMotor(task, pedidoDeConserto("revisor", rev.texto), { resume: task.sessionId || undefined });
         applyRunInfo(task, fix);
         if (task.status !== "rodando") return { parou: true };
         // ⚠️ A rodada de CONSERTO também pode estourar cota ou falhar. Ignorar isso fazia o board
@@ -399,20 +509,16 @@ export async function esteira(task, project, { mexeu }) {
     // ── QA: tenta quebrar, rodando de verdade (inclui instabilidade da entrega) ─
     if (QA_LIGADO && mexeu) {
       etapa(task, "qa");
-      const qa = await runQA(task, project);
+      const qa = await parecerDe(task, project, "qa", rodada);
       if (task.status !== "rodando") return { parou: true };
       if (qa.falhou) return { ok: false, motivo: qa.motivo }; // falha de infraestrutura, não reprova o trabalho
       task.qa = { veredito: qa.veredito, rodadas: rodada, em: now() };
-      task.reprovaPendente = !qa.aprovado;
       if (!qa.aprovado) {
-        if (rodada >= REVIEW_ROUNDS) return { ok: false, motivo: `o QA reprovou (${qa.veredito || "sem veredito"})` };
+        task.reprovaPendente = true; task.reprovaArvore = estadoDaArvore(project.dir);
+        if (rodada >= REVIEW_ROUNDS) return { ok: false, motivo: `o QA reprovou (${qa.veredito})` };
         rodada++;
         etapa(task, "agente");
-        const fix = await runMotor(task,
-          ["O QA do board testou a sua entrega e REPROVOU:", "", qa.texto, "",
-            "Reproduza cada defeito com o passo que ele deu, conserte na causa, deixe um teste que morda o defeito, e responda o que mudou.",
-            "Instabilidade que ele marcou como PRÉ-EXISTENTE não é sua: não mexa nela."].join("\n"),
-          { resume: task.sessionId || undefined });
+        const fix = await runMotor(task, pedidoDeConserto("qa", qa.texto), { resume: task.sessionId || undefined });
         applyRunInfo(task, fix);
         if (task.status !== "rodando") return { parou: true };
         // ⚠️ A rodada de CONSERTO também pode estourar cota ou falhar. Ignorar isso fazia o board
@@ -425,6 +531,9 @@ export async function esteira(task, project, { mexeu }) {
     }
     break;
   }
+  task.conferenciaPendente = false;
+  // Aqui, e não em cada aprovação: o revisor aprovar não desfaz a reprova do QA, e o QA cortado depois do conserto voltaria dizendo "o defeito continua" sem foto para comparar.
+  task.reprovaPendente = false; task.reprovaArvore = null;
   return { ok: true };
 }
 
@@ -465,15 +574,17 @@ export async function mesclarEPublicar(task, project) {
  */
 export async function prTask(task, alvo = "pr") {
   const project = projectOf(task);
-  task.entrega = alvo; task.status = "rodando"; task.busy = true; task.error = null;
+  task.entrega = alvo; task.status = "rodando"; task.busy = true; task.error = null; task.conferir = null;
   task.gate = null; task.revisor = null; task.qa = null;
+  // Pedido na mão: sem mudança na pasta, não é erro. A dívida guarda isso para a retentativa, que volta pelo runTask, inclusive com a conferência cortada.
+  task.entregaPendente = { exigirPr: false }; task.semMesclar = false;
   etapa(task, "agente");
   logEvent(task.id, { t: "inicio", titulo: (alvo === "deploy" ? "entregar, mesclar e publicar — " : "entrega por PR — ") + task.title, projeto: project.slug, dir: project.dir });
 
   const v = await esteira(task, project, { mexeu: true });
   if (v.parou) return finaliza(task, task.status, "parada pelo dono");
   if (!v.ok) return finaliza(task, "erro", v.motivo);
-  await entregar(task, project, { exigirPr: false }); // pedido na mão: sem mudança, não é erro
+  await entregar(task, project, devendoEntrega(task, project, false));
 }
 
 /**
@@ -499,6 +610,9 @@ export async function entregar(task, project, { exigirPr = true } = {}) {
     // Automático (a rodada mexeu em arquivo) exige PR; pedido na mão só reclama se a pasta tem
     // mudança pendente — e mesmo assim ela pode ser do dono, então o texto diz isso.
     if (!exigirPr && !haMudancas(project.dir)) { logEvent(task.id, { t: "solto", texto: "nada para entregar: a pasta não tem mudança pendente" }); return finaliza(task, "executada"); }
+    // Automático também: o agente da entrega disse "não há o que entregar" e a pasta confirma (limpa, HEAD já publicado). Branch
+    // empurrada sem PR não passa aqui: o HEAD dela não está no origin/HEAD, e continua erro.
+    if (nadaParaEntregar(project.dir)) return fecharSemEntrega(task);
     return finaliza(task, "erro", "a entrega terminou sem URL de PR — veja o resumo do agente (se a tarefa não mudou arquivo, não havia o que entregar)");
   }
   if (task.entrega === "deploy") {
@@ -508,15 +622,100 @@ export async function entregar(task, project, { exigirPr = true } = {}) {
   finaliza(task, "executada");
 }
 
+/** O chat que responde pela tarefa agora: ⏹ seguido de outro chat deixa o primeiro terminando por trás. */
+const CHAT_DA_VEZ = new Map();
+
+/** A conferência está devendo: algo reprovou e nada aprovou depois (portão, revisor ou QA), ou ela foi cortada antes do veredito. */
+export const conferenciaDevida = (task) => !!(task.reprovaPendente || task.conferenciaPendente || task.gate?.ok === false || task.revisor?.veredito === "REPROVADO" || task.qa?.veredito === "REPROVADO");
+
+/**
+ * O parecer que esta volta ao agente leva, ou "". Com as rodadas de conserto esgotadas ele nunca chegou à sessão, e a retomada só
+ * tinha a frase do erro: nas #286 e #289 o agente disse que o parecer não chegou e foi ao log, ou consertou outra coisa (#299).
+ * `soNovo` é o chat: ele não repete a cada mensagem o que a sessão já recebeu.
+ */
+function parecerDaVolta(task, { soNovo = false } = {}) {
+  if (!conferenciaDevida(task)) return "";
+  const abertos = pareceresAbertos(task);
+  if (!abertos.length) return "";
+  const ultimo = abertos.at(-1).at;
+  if (soNovo && task.parecerEntregue >= ultimo) return "";
+  task.parecerEntregue = ultimo;
+  return textoDosPareceres(abertos);
+}
+
+/**
+ * A conferência de um conserto feito no chat (#288): só a esteira, sem rodar o agente. Vem pela fila (`task.conferir`)
+ * porque o portão leva minutos e a pasta é uma só: respeita a vaga do projeto e a pausa, como a retentativa.
+ */
+export async function conferirTask(task) {
+  const project = projectOf(task);
+  task.agente = nomeDeAgente(task);
+  task.conferir = null; task.retomar = false;
+  task.status = "rodando"; task.busy = true; task.startedAt = now(); task.updatedAt = now(); task.error = null;
+  task.gate = null; task.revisor = null; task.qa = null;
+  etapa(task, "agente");
+  logEvent(task.id, { t: "inicio", titulo: "conferir o conserto do chat — " + task.title, projeto: project.slug, dir: project.dir });
+  const v = await esteira(task, project, { mexeu: true });
+  // 🔴 Com marca da vigia (#279) o PR está em conflito ou com check falhando: aprovar o conserto do chat não mescla.
+  return fecharConferida(task, project, v, { mexeu: true, atualizaPr: task.prVigia || null });
+}
+
+/**
+ * Reprovada e consertada pelo chat: sem isto, portão, revisor e QA não rodavam e a tarefa seguia em erro, calada (#286,
+ * 31/10: ~10 h assim). Só vale se a rodada mudou a pasta: pergunta não confere nada. Concluída não volta, e rodada
+ * parada pelo dono (`busy` já caiu) fica como ele deixou.
+ */
+function conferirDepoisDoChat(task, r, parou) {
+  if (r.result) task.result = r.result;
+  if (parou) return logEvent(task.id, { t: "solto", texto: "⚠ você parou o chat e a pasta mudou: a reprovação segue de pé e o conserto não foi conferido — rode a tarefa de novo" });
+  if (task.status === "concluida") return logEvent(task.id, { t: "solto", texto: "⚠ a pasta mudou no chat de uma tarefa concluída com reprovação: portão, revisor e QA não rodam" });
+  task.conferir = { em: now() };
+  task.status = "fila"; task.retomar = false; task.retentativa = null;
+  logEvent(task.id, { t: "retentativa", estado: "na-fila", texto: "o chat mudou arquivo numa tarefa reprovada: na fila para portão, revisor e QA" });
+}
+
 export async function chatTask(task, text, anexos = []) {
   task.busy = true; task.updatedAt = now(); save(); broadcast("state");
   const fotos = anexosValidos(anexos);
   logEvent(task.id, { t: "dono", texto: text, anexos: fotos.map((a) => ({ id: a.id, nome: a.nome })) });
   const contexto = `Tarefa #${task.id} do board:\n${task.text}\n\nO dono diz sobre ela:\n${text}`;
-  const prompt = comAnexos(task.sessionId ? text : contexto, fotos);
-  const r = await runAgent(task, prompt, { resume: task.sessionId || undefined, fresco: comAnexos(contexto, fotos) });
+  const parecer = parecerDaVolta(task, { soNovo: true });
+  const comParecer = (t) => (parecer ? `${t}\n\n---\n\nQuem manda nesta conversa é o dono: faça o que ele disse acima. O que vem abaixo é o contexto da reprovação.\n\n${parecer}` : t);
+  const prompt = comAnexos(comParecer(task.sessionId ? text : contexto), fotos);
+  const dir = conferenciaDevida(task) ? projectOf(task).dir : null;
+  // A árvore do git, não o `find -newer`: ele acha o data/ do próprio board, e a marca é uma só para todas as rodadas.
+  const antes = dir && estadoDaArvore(dir);
+  const marca = dir && !antes ? marcarInstante() : null;
+  // Gravada ANTES da rodada: board que cai no meio não chega ao fim desta função (conferirChatCortado, ao subir).
+  if (dir) { task.chatAberto = { arvore: antes }; save(); }
+  const eu = {}; CHAT_DA_VEZ.set(task.id, eu);
+  const r = await runAgent(task, prompt, { resume: task.sessionId || undefined, fresco: comAnexos(comParecer(contexto), fotos) });
   applyRunInfo(task, r);
-  task.busy = false; task.updatedAt = now();
+  if (CHAT_DA_VEZ.get(task.id) !== eu) return; // o dono parou este e já mandou outro: quem responde pela tarefa é o outro
+  CHAT_DA_VEZ.delete(task.id);
+  const parou = !task.busy;
+  task.busy = false; task.updatedAt = now(); task.chatAberto = null;
   if (r.error && !r.result) logEvent(task.id, { t: "solto", texto: "⚠ " + r.error });
+  // Pasta diferente da reprovada também conta: o conserto veio de um chat que não fechou, e repetir o chat só ouviria "já está feito".
+  const agora = dir && antes ? estadoDaArvore(dir) : null;
+  const mudou = r.escreveu || (antes ? agora !== antes || (task.reprovaArvore && agora !== task.reprovaArvore) : mexeuEmArquivo(dir, marca));
+  if (dir && mudou) conferirDepoisDoChat(task, r, parou);
   save(); broadcast("state");
+}
+
+/**
+ * Ao subir: chat de tarefa reprovada que o board não viu terminar (SIGTERM, `kill -9`, luz). Pasta diferente da foto (ou sem git,
+ * onde não há foto) = o conserto pode estar lá, e a tarefa não pode voltar a ficar em erro calada, como a #286 (QA da #288).
+ */
+export function conferirChatsCortados() {
+  for (const t of state.tasks) {
+    if (!t.chatAberto) continue;
+    const { arvore } = t.chatAberto;
+    t.chatAberto = null;
+    let mudou = true;
+    try { mudou = !arvore || estadoDaArvore(projectOf(t).dir) !== arvore; } catch { /* sem pasta: fica o aviso */ }
+    if (!mudou) continue;
+    logEvent(t.id, { t: "solto", texto: "⚠ o board caiu no meio do chat e a pasta mudou: o agente pode não ter terminado" });
+    conferirDepoisDoChat(t, {}, false);
+  }
 }

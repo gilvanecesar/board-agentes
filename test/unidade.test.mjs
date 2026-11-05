@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
 import { criarCaixa, envDaCaixa, criarProjeto, limparCaixa, esperar } from "./ajuda.mjs";
 
 const caixa = criarCaixa();
@@ -55,15 +56,68 @@ after(() => limparCaixa(caixa));
 
 describe("veredito do revisor e do QA (fail-closed)", () => {
   test("a linha que é só a palavra vale", () => {
-    assert.equal(B.lerVeredito("APROVADO\ntudo certo"), "APROVADO");
+    assert.equal(B.lerVeredito("APROVADO\ntudo certo\nGRAVES: nenhum\nMENORES: nenhum"), "APROVADO");
     assert.equal(B.lerVeredito("**REPROVADO**\n- falta teste"), "REPROVADO");
     assert.equal(B.lerVeredito("> aprovado."), "APROVADO");
   });
   test("frase antes da linha do veredito não engana", () => {
     assert.equal(B.lerVeredito("o revisor anterior tinha APROVADO, mas\nREPROVADO\nquebra X"), "REPROVADO");
   });
-  test("sem veredito legível é null (a esteira trata como reprova)", () => {
+  test("rodada de vários turnos (#306): o último manda; só a repetição da mesma palavra, em linha própria, devolve o parecer inteiro", () => {
+    const ok = "APROVADO\nGRAVES: nenhum\nMENORES:\n- cor";
+    const rep = "REPROVADO\nGRAVES:\n- quebra X\nMENORES: nenhum";
+    assert.equal(B.parecerDaRodada([ok]), ok);
+    assert.equal(B.parecerDaRodada([ok, "APROVADO"]), ok, "sem isso as sobras sumiam");
+    assert.equal(B.parecerDaRodada([ok, "**APROVADO.**"]), ok);
+    assert.equal(B.parecerDaRodada([rep, "REPROVADO"]), rep);
+    const juntos = B.parecerDaRodada([rep, "REPROVADO\n\nO veredito não muda."]);
+    assert.match(juntos, /quebra X/); assert.match(juntos, /não muda/); assert.equal(B.lerVeredito(juntos), "REPROVADO");
+    assert.equal(B.parecerDaRodada([ok, "", "  "]), ok, "turno vazio não conta");
+    for (const fim of ["Aguardando a notificação.", "REPROVADO\na 5ª rodada falhou", "agora não está mais APROVADO", rep,
+      "APROVADO\n\nGRAVES:\n- a 5a rodada apagou dados", "APROVADO\n\nNa verdade a 5ª rodada falhou.", "APROVADO\n\nA notificação é só a espera."]) {
+      assert.equal(B.parecerDaRodada([ok, fim]), fim, fim);
+      assert.notEqual(B.lerVeredito(B.parecerDaRodada([ok, fim])), "APROVADO", fim);
+    }
+    assert.equal(B.parecerDaRodada([]), "");
+  });
+  test("sem veredito legível é null (nunca aprova)", () => {
     for (const t of ["", "parece ok", "aprovadíssimo", null, undefined]) assert.equal(B.lerVeredito(t), null);
+  });
+  // #300. Os três jeitos de escrever os blocos que os modelos usam, e o que acontece com cada furo.
+  const ok = (graves = "nenhum", menores = "nenhum") => `APROVADO\nrodei tudo\nGRAVES: ${graves}\nMENORES: ${menores}`;
+  test("APROVADO só vale com a classificação legível; a palavra sozinha não aponta nada a classificar", () => {
+    assert.equal(B.lerVeredito("APROVADO"), "APROVADO");
+    assert.equal(B.lerVeredito(ok()), "APROVADO");
+    assert.equal(B.lerVeredito("**APROVADO**\n\n## Graves\nNenhum defeito grave.\n\n## Menores (0)\n- nenhum"), "APROVADO");
+    assert.equal(B.lerVeredito("APROVADO\n**GRAVES:** nenhum\n**MENORES:** 0"), "APROVADO");
+    for (const t of ["APROVADO\ntudo certo", "APROVADO\nnotei um bug no login", "APROVADO\nGRAVES: nenhum", "APROVADO\nMENORES: nenhum",
+      "APROVADO\nGRAVES:\nMENORES: nenhum", "APROVADO\nGRAVES: nenhum\nMENORES:", "APROVADO\n- MENOR: texto torto"]) {
+      assert.equal(B.lerVeredito(t), null, t);
+      assert.equal(B.lerParecer(t).semClassificacao, true, t);
+    }
+  });
+  test("GRAVE listado reprova, mesmo com APROVADO na primeira linha, em qualquer roupa de markdown", () => {
+    for (const t of [ok("- vaza o CNPJ de outra empresa"), ok("vaza o CNPJ"), ok("nenhum, mas o login cai"), "APROVADO\nGRAVES: nenhum\n- o valor sai errado\nMENORES: nenhum",
+      "APROVADO\n## Graves (1)\n1. o frete sai zerado\n## Menores\nnenhum", "APROVADO\n- **GRAVE:** apaga dado\n- MENOR: cor\n", "APROVADO\nGRAVES: nenhum\nGRAVE — teste instável\nMENORES: nenhum"]) {
+      assert.equal(B.lerVeredito(t), "REPROVADO", t);
+    }
+  });
+  test("REPROVADO não vira aprovado por falta de GRAVE: a dúvida fica com o lado seguro", () => {
+    assert.equal(B.lerVeredito("REPROVADO\nGRAVES: nenhum\nMENORES:\n- cor do botão"), "REPROVADO");
+    assert.equal(B.lerVeredito("APROVADO\nGRAVES: nenhum\nMENORES: nenhum\nREPROVADO"), "REPROVADO", "as duas palavras em linha própria");
+  });
+  test("menores saem em lista; frase que só começa com a palavra não é bloco, e o que vem depois de 'nenhum' não vira sobra", () => {
+    const p = B.lerParecer("APROVADO\nMenores de idade não entram no teste.\nGRAVES: nenhum\nMENORES:\n- **texto** torto em `a.js`\n  com continuação\n2. cor do botão\n");
+    assert.equal(p.veredito, "APROVADO");
+    assert.deepEqual(p.menores, ["texto torto em `a.js` com continuação", "cor do botão"]);
+    assert.deepEqual(B.lerParecer("APROVADO\nGRAVES: nenhum\nMENORES: nenhum\n\nRodei 5 vezes.").menores, []);
+    assert.deepEqual(B.lerParecer(ok("nenhum", "uma só, na linha")).menores, ["uma só, na linha"]);
+  });
+  test("o conserto leva só os GRAVES; sem GRAVE listado, o texto vai inteiro", () => {
+    const p = B.pedidoDeConserto("qa", "REPROVADO\nGRAVES:\n- o frete zera\nMENORES:\n- cor do botão");
+    assert.match(p, /o frete zera/); assert.doesNotMatch(p, /cor do botão/); assert.match(p, /MENOR não é pedido de conserto/);
+    assert.equal(B.parecerSoGrave("REPROVADO\nGRAVES: nenhum\nMENORES:\n- cor"), "REPROVADO\nGRAVES: nenhum\nMENORES:\n- cor");
+    assert.match(B.pedidoDeConserto("revisor", "APROVADO\ntudo certo"), /sem os blocos GRAVES e MENORES/);
   });
 });
 
@@ -72,7 +126,8 @@ describe("motivo do erro decide a retentativa", () => {
     ["You've hit your limit · resets 3pm", "cota"], ["cc_cli_limit_message", "cota"], ["usage limit reached", "cota"],
     ["falhou ao mesclar o PR", "manual"], ["deploy caiu no meio", "manual"], ["não achei a URL do PR para mesclar", "manual"],
     ["tempo esgotado (90 min)", "tempo"], ["o portão reprovou (npm run check)", "portao"],
-    ["o revisor reprovou (sem veredito)", "revisor"], ["o QA reprovou (REPROVADO)", "qa"], ["o claude saiu com código 1", "falha"],
+    ["o revisor reprovou (SEM CLASSIFICAÇÃO)", "revisor"], ["o QA reprovou (REPROVADO)", "qa"], ["o claude saiu com código 1", "falha"],
+    ["o QA terminou duas vezes sem veredito: a entrega não foi reprovada, mas também não foi conferida", "manual"],
   ];
   for (const [msg, tipo] of casos) test(`"${msg}" → ${tipo}`, () => assert.equal(B.classifyError(msg), tipo));
   test("a marca de cota que vem do motor ganha do texto", () => assert.equal(B.classifyError("qualquer coisa", { erroCota: true }), "cota"));
@@ -145,6 +200,17 @@ describe("portão: o comando de verificação do projeto", () => {
     } finally { writeFileSync(join(caixa.board, "data", "portao.json"), "{}"); }
   });
   test("pasta sem package.json → sem portão", () => assert.equal(B.gateCommand({ slug: "x", dir: caixa.raiz }), ""));
+  test("portão com centenas de linhas: o parecer diz QUAL teste falhou, mesmo longe do fim (#351)", async () => {
+    const cmd = `for i in $(seq 1 300); do echo "ok $i - passou $i"; done; echo "not ok 301 - o teste que quebrou"; ` +
+      `echo "  location: '/x/test/quebra.test.mjs:12:1'"; echo "  error: 'esperava 2'"; ` +
+      `for i in $(seq 302 600); do echo "ok $i - passou $i"; done; echo "# fail 1"; exit 1`;
+    const g = await B.runGate({ id: "teste-portao" }, { dir: caixa.raiz }, cmd);
+    assert.equal(g.ok, false);
+    assert.match(g.saida, /^Testes que falharam \(not ok\):\nnot ok 301 - o teste que quebrou\n {2}location: '\/x\/test\/quebra\.test\.mjs:12:1'\n {2}error: 'esperava 2'/);
+    assert.match(g.saida, /# fail 1$/, "o fim da saída continua lá");
+    const verde = await B.runGate({ id: "teste-portao-2" }, { dir: caixa.raiz }, "seq 1 200");
+    assert.ok(verde.ok && !/not ok/.test(verde.saida) && verde.saida.endsWith("200"), "sem falha, a saída é a de antes");
+  });
 });
 
 describe("anexos: só o que o board gerou", () => {
@@ -265,4 +331,13 @@ describe("curva de giro: como a tarefa foi na conferência", () => {
     assert.equal(B.resultadoDaConferencia(t("executada", null, null)), "semConferencia");
     assert.equal(B.resultadoDaConferencia(t("rodando", null, null)), null);
   });
+});
+
+test("portaLivre: arquivos de teste em paralelo nunca recebem a mesma porta (a colisão ligava um teste no Chrome do outro)", async () => {
+  const codigo = `import(${JSON.stringify(new URL("./ajuda.mjs", import.meta.url).href)}).then(async ({ portaLivre }) => { const r = []; for (let i = 0; i < 40; i++) r.push(await portaLivre()); console.log(r.join(" ")); });`;
+  const roda = () => new Promise((ok, bad) => execFile(process.execPath, ["-e", codigo], (e, saida) => e ? bad(e) : ok(saida.trim().split(" ").map(Number))));
+  const portas = (await Promise.all([roda(), roda(), roda(), roda()])).flat();
+  assert.equal(portas.length, 160);
+  assert.equal(new Set(portas).size, 160, "cada porta sai uma vez só");
+  assert.ok(portas.every((p) => p >= 20000 && p < 32000), "fora da faixa das conexões de saída");
 });

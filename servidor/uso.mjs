@@ -2,6 +2,7 @@
 import { spawn, execFileSync } from "child_process";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
+import { parecerSoGrave } from "./regras.mjs";
 import { C, MOTOR_PADRAO, MOTOR_QA, MOTOR_REVISOR, ROOT, cut, modeloServe, now, stripAnsi } from "./config.mjs";
 import { broadcast, logEvent, readLog, save, state, taskById } from "./estado.mjs";
 import { projectOf } from "./projetos.mjs";
@@ -128,7 +129,10 @@ export function usoDoCodex() {
       }
       return saco;
     };
-    const arqs = maisNovos(raiz, 12);
+    // ⚠️ Pela data em que o arquivo foi MEXIDO, não pelo nome: uma sessão aberta dias atrás (pasta 2026/10/16)
+    // continua gravando hoje, e pelo nome perdia para uma de 19/10 — a tela mostrava 39% de 4 dias antes
+    // enquanto o dono já estava sem crédito (23/10/2026).
+    const arqs = maisNovos(raiz, 60).map((a) => [a, statSync(a).mtimeMs]).sort((x, y) => y[1] - x[1]).map(([a]) => a);
     if (!arqs.length) return { ok: false, erro: "sem sessões do codex" };
     // A sessão mais nova pode ter falhado antes de receber limite: procura nas últimas.
     let arq = null, linhas = [];
@@ -148,8 +152,19 @@ export function usoDoCodex() {
       limites.push({ nome: `Codex · ${janela(w.window_minutes || 10080)}${rotulo}`, pct: Math.round(w.used_percent * 10) / 10,
         renovaEm: w.resets_at ? new Date(w.resets_at * 1000).toISOString() : null, renovaTexto: "" });
     }
+    // Sem percentual, o Codex ainda diz se ACABOU: crédito zerado, limite atingido ou o erro "hit your usage
+    // limit" no fim da sessão. Isso é 100% — mostrar "sem leitura" escondia que o motor está parado.
+    const cred = rl.credits;
+    const semCredito = cred && cred.has_credits === false && !cred.unlimited;
+    const ultimoErro = readFileSync(arq, "utf8").split(/\r?\n/).filter(Boolean).slice(-30).reverse()
+      .map((x) => { try { return JSON.parse(x); } catch { return null; } })
+      .map((e) => e?.payload?.error?.message || "").find((m) => /usage limit|insufficient|quota|credits?/i.test(m)) || "";
+    const acabou = semCredito || !!rl.rate_limit_reached_type || !!rl.spend_control_reached || !!ultimoErro;
+    if (acabou && !limites.some((l) => l.pct >= 100))
+      limites.unshift({ nome: semCredito ? "Codex · créditos" : "Codex · limite", pct: 100, renovaEm: null, renovaTexto: "" });
+    const nota = acabou ? [semCredito ? `sem crédito (saldo ${cred.balance ?? 0})` : "", ultimoErro ? cut(ultimoErro, 160) : ""].filter(Boolean).join(" · ") : "";
     return limites.length
-      ? { ok: true, modo: rl.plan_type ? "plano " + rl.plan_type : "", limites, contrib: [], nota: "",
+      ? { ok: true, modo: rl.plan_type ? "plano " + rl.plan_type : "", limites, contrib: [], nota,
           medidoEm: statSync(arq).mtime.toISOString() }
       : { ok: false, erro: "o codex não trouxe percentual de uso" };
   } catch (e) { return { ok: false, erro: "não consegui ler o uso do codex: " + e.message }; }
@@ -306,7 +321,7 @@ export function textoDaPassagem(task, de, para, motivo) {
   try { pasta = execFileSync("git", ["status", "--porcelain"], { cwd: project.dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split(/\r?\n/).slice(0, 30).join("\n"); } catch { pasta = "(a pasta não é um repositório git)"; }
   // O que o revisor/QA já apontou vai junto: sem isso o novo agente conserta no escuro.
   const pareceres = evs.filter((e) => (e.t === "revisor" || e.t === "qa") && e.veredito === "REPROVADO").slice(-2)
-    .map((e) => `${e.t === "qa" ? "QA" : "Revisor"} REPROVOU:\n${cut(e.texto || "", 1200)}`).join("\n\n");
+    .map((e) => `${e.t === "qa" ? "QA" : "Revisor"} REPROVOU:\n${cut(parecerSoGrave(e.texto), 1200)}`).join("\n\n");
   return [
     `PASSAGEM DE BASTÃO: esta tarefa foi começada por outro agente (${de}) e ${motivo === "sem cota" ? "ele ficou SEM COTA no meio" : "o dono pediu a troca"}. Você (${para}) continua daqui.`,
     "", "A tarefa original:", task.text, "",
