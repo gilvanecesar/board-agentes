@@ -4,6 +4,10 @@ import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
  // procurar tarefa pelo sentido (embeddings)
 
+// board.env ANTES de qualquer process.env: lido depois, BOARD_PRODUCAO e BOARD_DONO ficavam vazios (de 26/09 a 02/10
+// Loja, ERP e CRM rodaram como projeto comum — na pasta do dono, sem cópia do origin/main).
+try { process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), "..", "board.env")); } catch { /* sem board.env: só o ambiente */ }
+
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), ".."); // a pasta do board (este arquivo mora em servidor/)
 export const DEV = process.env.BOARD_PROJETOS || dirname(ROOT); // ~/Documents/DEV — os projetos são as pastas irmãs (no Docker: /projetos)
 export const DATA = resolve(ROOT, "data");
@@ -15,7 +19,10 @@ export const WEB = join(ROOT, "web", "index.html");
 
 export const PORT = Number(process.env.BOARD_PORT || 4488);
 // O servidor sempre ligado (Monitoramento, Controle, cópia do board): um apelido do ~/.ssh/config.
-export const SERVIDOR = process.env.BOARD_SERVIDOR || "saturno";
+export const SERVIDOR = process.env.BOARD_SERVIDOR || "atena";
+// "local" = o board roda NO PRÓPRIO servidor (#239, board no Atena): as leituras do servidor viram comando local
+// (sem ssh para si mesmo), o Mac não é lido daqui e a cópia de data/ para o servidor não roda (ver CLAUDE.md).
+export const SERVIDOR_LOCAL = SERVIDOR === "local";
 // Paralelismo: UM agente por projeto (duas sessões na mesma pasta se atropelam nos arquivos)
 // e um teto geral. Tarefas de projetos diferentes rodam ao mesmo tempo.
 export const PARALLEL = Math.max(1, Number(process.env.BOARD_PARALELO || 4));       // teto geral
@@ -27,17 +34,25 @@ export const PARALELO_POR_PROJETO = Math.max(1, Number(process.env.BOARD_PARALEL
 export const AGENTES_DIR = join(DEV, ".board-agentes");
 // Produção: o agente ⚡ entrega por PR (regra de ouro do portfólio); nos outros o board junta na pasta.
 export const PRODUCAO = (process.env.BOARD_PRODUCAO || "").split(",").map((x) => x.trim()).filter(Boolean); // projetos que SEMPRE trabalham em cópia e entregam por PR
+// 🎙 A palavra de chamada do modo voz (#305): este é o ÚNICO lugar do nome; a tela, o vocabulário do whisper e o reconhecedor leem daqui.
+export const VOZ_NOME = (process.env.BOARD_VOZ_NOME || "").trim() || "Atena";
 export const DONO = process.env.BOARD_DONO ? ` (${process.env.BOARD_DONO})` : ""; // o nome do dono nas regras dos agentes
 export const TIMEOUT_MS = Number(process.env.BOARD_TIMEOUT_MIN || 90) * 60000;
-// A conversa é conversa: resposta que demora meia hora não é resposta. Teto próprio, bem menor.
-export const CONVERSA_TIMEOUT_MS = Number(process.env.BOARD_CONVERSA_MIN || 15) * 60000; // 45 → 90 em 17/09: tarefa full-stack (migração + motor + tela + portão de 5 min) não cabia em 45
-// board.env (opcional, ao lado deste arquivo): BOARD_MODELO=…, BOARD_MODELO_REVISOR=…, BOARD_MODELO_QA=…, BOARD_TIMEOUT_MIN=…
-// Lido a cada subida do processo — o "reiniciar" da tela/CLI basta para trocar de modelo, sem mexer no board.sh que está rodando.
-try { process.loadEnvFile(new URL("../board.env", import.meta.url).pathname); } catch { /* sem board.env: só o ambiente */ }
+// A conversa trabalha como o terminal (06/10, pedido do dono: "um chat igual o terminal, que roda tudo"):
+// 15 min cortava trabalho de verdade no meio. Continua com teto próprio, só que maior.
+export const CONVERSA_TIMEOUT_MS = Number(process.env.BOARD_CONVERSA_MIN || 60) * 60000;
+// board.env (lido no topo deste arquivo, a cada subida do processo): o "reiniciar" da tela/CLI basta para trocar de modelo.
 export const MODEL = process.env.BOARD_MODELO || "";
 export const TOOLS = process.env.BOARD_TOOLS ||
   "Read,Edit,Write,MultiEdit,NotebookEdit,Grep,Glob,Bash,WebFetch,WebSearch,mcp__ai-memory";
 export const PERMISSION = process.env.BOARD_PERMISSAO || "acceptEdits";
+// A conversa usa o MESMO modo do Claude Code do terminal do dono ("auto": um classificador decide cada
+// ação), não a lista fechada das tarefas — com acceptEdits + BOARD_TOOLS todo MCP fora da lista
+// (navegador, Gmail, Drive, Calendar, Figma…) era negado em silêncio. Provado em 06/10 nos dois modos.
+export const CONVERSA_PERMISSION = process.env.BOARD_CONVERSA_PERMISSAO || "auto";
+// Claude in Chrome na conversa (07/10): sem `--chrome` o `claude -p` não enxerga a extensão. Só na conversa —
+// é o Chrome de verdade do dono (logado, abas visíveis, um só para todos): tarefa sem ninguém olhando não ganha.
+export const CONVERSA_CHROME = process.env.BOARD_CONVERSA_CHROME !== "0";
 // Motor = qual CLI roda a tarefa. O do agente é escolhido POR TAREFA na tela; revisor e QA têm o
 // seu (padrão claude), de propósito: agente no Codex revisado pelo Claude é conferência cruzada.
 export const MOTOR_PADRAO = process.env.BOARD_MOTOR || "claude";
@@ -99,6 +114,15 @@ export const filaPausada = () => existsSync(PAUSE_FLAG);
 // Retentativa automática de tarefa em erro (fora cota, que pausa a fila e não conta).
 export const RETRY_MAX = Math.max(0, Number(process.env.BOARD_RETENTATIVAS ?? 2));
 export const RETRY_DELAY_MS = Number(process.env.BOARD_RETENTATIVA_MIN || 2) * 60000;
+// ⚡ Junção com conflito: quantas vezes o PRÓPRIO agente tenta resolver na cópia antes de chamar o dono.
+export const JUNTAR_TENTATIVAS = Math.max(0, Number(process.env.BOARD_JUNTAR_TENTATIVAS ?? 2));
+// De quanto em quanto tempo o runner olha se uma "não juntada" já foi aplicada à mão na pasta.
+export const JUNTAR_CONFERIR_MS = Math.max(1, Number(process.env.BOARD_JUNTAR_CONFERIR_S || 15)) * 1000;
+// A vigia dos PRs (#279): de quanto em quanto tempo lê (0 desliga), quantas devoluções por PR até chamar o dono, e quanto
+// espera depois de a tarefa terminar antes de acreditar no que o GitHub diz.
+export const PR_VIGIA_MS = Math.max(0, Number(process.env.BOARD_PR_VIGIA_S ?? 300)) * 1000;
+export const PR_TENTATIVAS = Math.max(0, Number(process.env.BOARD_PR_TENTATIVAS ?? 2));
+export const PR_CARENCIA_MS = Math.max(0, Number(process.env.BOARD_PR_CARENCIA_S ?? 120)) * 1000;
 export const DEPLOY_TIMEOUT_MS = Number(process.env.BOARD_DEPLOY_TIMEOUT_MIN || 20) * 60000;
 
 export const STATUSES = ["pendente", "fila", "rodando", "executada", "concluida", "erro"];
@@ -118,8 +142,13 @@ export const COM_ROTINAS = process.env.BOARD_SEM_ROTINAS !== "1";
 /*
  * O GRAFO DA MEMÓRIA (menu "Memória"): as páginas do ai-memory e as ligações [[…]] entre elas, lidas do
  * espelho que o board já mantém para o Obsidian (~/Documents/Memoria/ai-memory, a cada 10 min) — sem
- * leitura nova no Saturno. Só leitura: mudar a memória continua sendo pedir a um agente.
+ * leitura nova no Atena. Só leitura: mudar a memória continua sendo pedir a um agente.
+ * No servidor (BOARD_SERVIDOR=local, #255) não há ~/Documents nem Obsidian: o espelho é ~/Memoria/ai-memory,
+ * montado pelo timer do usuário memoria-espelho (memoria/servidor/) direto do wiki do ai-memory de lá.
  */
-export const ESPELHO_MEMORIA = process.env.BOARD_ESPELHO_MEMORIA || join(process.env.HOME, "Documents", "Memoria", "ai-memory");
+export const ESPELHO_MEMORIA = process.env.BOARD_ESPELHO_MEMORIA
+  || (SERVIDOR_LOCAL ? join(process.env.HOME, "Memoria", "ai-memory") : join(process.env.HOME, "Documents", "Memoria", "ai-memory"));
+/** A marca que o memoria-espelho do servidor toca a cada espelho que deu certo (a hora dela = a idade do espelho). */
+export const MARCA_ESPELHO = join(dirname(ESPELHO_MEMORIA), ".espelho-ok");
 // O log CRU (stream-json) é só para depurar e cresce rápido: 211 MB em três dias. Desligável.
 export const RAW_LIGADO = process.env.BOARD_LOG_CRU !== "0";

@@ -88,7 +88,7 @@ test("backups lidos do log real: fuso antigo e novo, tamanho, arquivo e o que fo
   const b2 = bk(c, "banco-b");
   assert.equal(b2.rodadas.at(-1).ok, false);
   assert.match(b2.rodadas.at(-1).motivo, /gzip -t/);
-  assert.equal(c.saturno.online, true); assert.equal(c.saturno.discoLivre, 50000000000);
+  assert.equal(c.atena.online, true); assert.equal(c.atena.discoLivre, 50000000000);
   assert.equal(c.memoria.paginas, 378); assert.equal(c.memoria.filaPendente, 3);
 });
 
@@ -99,7 +99,7 @@ test("alertas: falha da noite, arquivo que não chegou ao Drive — e nada de al
   assert.match(t, /Banco A: o arquivo banco-a-20260927-0100\.dump não está no Drive/);
   assert.doesNotMatch(t, /Memória: /, "a memória está em dia e no Drive");
   assert.doesNotMatch(t, /Ainda sem rodada automática/, "todos já tiveram rodada do cron");
-  assert.doesNotMatch(t, /Disco do Saturno/, "50% livre não é alarme");
+  assert.doesNotMatch(t, /Disco do Atena/, "50% livre não é alarme");
   assert.ok(c.drive.find((p) => p.pasta === "backups/memoria").lista.some((x) => x.nome === "memoria-20260927-0030.tar.gz"));
 });
 
@@ -111,8 +111,8 @@ test("três dias sem backup: o alerta diz há quantas horas", async () => {
 test("servidor fora do ar e Drive sem acesso: o Controle diz isso, não finge que está tudo bem", async () => {
   const { c } = await preparar({ ssh: null, drive: null });
   const t = c.alertas.map((x) => x.texto).join("\n");
-  assert.equal(c.saturno.online, false);
-  assert.match(t, /Saturno não responde/);
+  assert.equal(c.atena.online, false);
+  assert.match(t, /Atena não responde/);
   assert.ok(c.drive.every((p) => p.ok === false));
 });
 

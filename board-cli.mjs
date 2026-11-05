@@ -11,8 +11,14 @@
  *   board say <id> "<mensagem>"                fala com a tarefa (mesma sessão do agente)
  *   board rm <id>                              exclui
  *   board reiniciar                            reinicia o board quando nada estiver rodando (precisa do board.sh)
- *   board agentes [--abrir]                    tmux "board-agentes": painel geral + um painel por agente (#eng01…) ao vivo
+ *   board agentes [--abrir|--montar]           tmux "board-agentes": painel geral + um painel por agente (#eng01…) ao vivo
+ *   board monitor [--uma-vez]                  painel em modo texto do monitor do Atena (tty1, só leitura, #350)
  *   board seguir <id>                          acompanha uma tarefa ao vivo no terminal (é o que roda em cada painel)
+ *   board aprovacao <id> "<o que te pediram>"  confere um SIM do dono dado na Central (só leitura; código 0 = vale)
+ *   board tela <destino>                       muda a tela que o dono está usando, SÓ navegação (#293; `link <url>` abre aba nova, #302): quadro · central · conversa [projeto] ·
+ *                                              sessoes · busca · prs · controle · tarefa <n> · sessao <nome> (navegador, memoria, consumo e monitoramento: telas removidas em 04/11)
+ *   board navegador <ação> …                   o navegador dos agentes (Chrome próprio, logado): abrir · ler · clicar ·
+ *                                              preencher · subir · esperar · captura · logar · fechar · registro
  *
  * Fala com o servidor local (BOARD_URL, padrão http://127.0.0.1:4488). Sem servidor, avisa e sai 0.
  */
@@ -20,17 +26,23 @@ const BASE = process.env.BOARD_URL || "http://127.0.0.1:4488";
 const [, , cmd, ...a] = process.argv;
 const LABEL = { pendente: "pendente", fila: "na fila", rodando: "RODANDO", executada: "executada", concluida: "concluída", erro: "ERRO" };
 
+// #249: o projeto aparece pelo RÓTULO de data/projetos.json ("CRM"), nunca pelo slug da pasta (Acme é outra empresa).
+let ROT = null;
+const np = (slug) => (ROT && ROT[slug]) || slug;
+async function rotulos() { if (!ROT) ROT = (await call("/state")).rotulos || {}; }
 async function call(path, method = "GET", body) {
   let r;
   try { r = await fetch(BASE + "/api" + path, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined }); }
   catch { console.error("(board fora do ar — suba com: node board.mjs)"); process.exit(0); }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) { console.error("erro:", d.error || r.status); process.exit(1); }
+  if (d.rotulos) ROT = d.rotulos;
   return d;
 }
 const id = () => { const n = Number(a[0]); if (!n) { console.error("informe o id"); process.exit(1); } return n; };
 
 // ── tmux: ver os agentes (#eng01, #eng02…) trabalhando, um painel cada ─────────────
+import { resolve as resolverCaminho } from "path";
 import { readFileSync as lerArq, existsSync as existe, statSync as tam, openSync, readSync, closeSync } from "fs";
 import { execFileSync as rodar, spawnSync } from "child_process";
 import { fileURLToPath as caminhoDe } from "url";
@@ -40,14 +52,14 @@ const SESSAO = "board-agentes";
 const K = { r: "\x1b[0m", dim: "\x1b[2m", b: "\x1b[1m", cyan: "\x1b[36m", verde: "\x1b[32m", verm: "\x1b[31m", amar: "\x1b[33m" };
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "");
 const nomeModelo = (m) => { const r = String(m || "").match(/^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i); return r ? r[1][0].toUpperCase() + r[1].slice(1) + " " + r[2] + (r[3] ? "." + r[3] : "") : (m || "padrão"); };
-const titulo = (t) => `${t.paralelo ? "⚡" : ""}#${t.agente || "?"} · ${t.project} · ${nomeModelo(t.modeloUsado)}${t.esforcoUsado ? " · " + t.esforcoUsado : ""} · tarefa #${t.id}`;
+const titulo = (t) => `${t.paralelo ? "⚡" : ""}#${t.agente || "?"} · ${np(t.project)} · ${nomeModelo(t.modeloUsado)}${t.esforcoUsado ? " · " + t.esforcoUsado : ""} · tarefa #${t.id}`;
 const limpa = (x) => String(x || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
-async function estado() { try { const r = await fetch(BASE + "/api/state"); return await r.json(); } catch { return null; } }
+async function estado() { try { const r = await fetch(BASE + "/api/state"); const d = await r.json(); if (d.rotulos) ROT = d.rotulos; return d; } catch { return null; } }
 function linhaDoEvento(ev) {
   const h = K.dim + hora(ev.at) + K.r + " ";
   const quem = ev.quem && ev.quem !== "agente" ? K.amar + "[" + ev.quem.toUpperCase() + "] " + K.r : "";
   switch (ev.t) {
-    case "inicio": return "\n" + h + K.b + "▶ começou em " + ev.projeto + K.r;
+    case "inicio": return "\n" + h + K.b + "▶ começou em " + np(ev.projeto) + K.r;
     case "texto": return h + quem + limpa(ev.texto);
     case "ferramenta": return h + quem + K.dim + "▸ " + ev.nome + " " + String(ev.alvo || "").slice(0, 110) + K.r;
     case "resultado": return h + K.verde + "■ resultado" + (ev.custo ? " · US$ " + Number(ev.custo).toFixed(2) : "") + K.r + (ev.dup ? "" : "\n" + limpa(ev.texto));
@@ -69,11 +81,11 @@ function cabecalho(t) {
   const linha = (k, v) => v ? "  " + K.dim + k.padEnd(9) + K.r + v + "\n" : "";
   return "\n" + K.cyan + K.b + "  " + (t.paralelo ? "⚡ " : "") + "#" + (t.agente || "?") + K.r + K.b + "  tarefa #" + t.id + K.r + "\n"
     + "  " + String(t.title || "").slice(0, 100) + "\n\n"
-    + linha("projeto", t.project)
+    + linha("projeto", np(t.project))
     + linha("modelo", nomeModelo(t.modeloUsado) + (t.esforcoUsado ? K.dim + " · esforço " + K.r + t.esforcoUsado : ""))
     + linha("porte", t.porte ? t.porte + (t.porteAuto ? K.dim + " (automático)" + K.r : "") : "")
     + linha("entrega", t.entrega === "pr" ? "Pull Request" : t.entrega === "deploy" ? "PR + publicar" : "direto na pasta")
-    + linha("cópia", t.worktree && t.worktree.dir ? t.worktree.dir : "")
+    + linha("cópia", t.worktree && t.worktree.dir ? "cópia isolada (⚡)" : "")
     + K.dim + "  " + "─".repeat(60) + "  Ctrl+B D sai sem parar nada" + K.r + "\n";
 }
 // ── O código sendo escrito: o log compacto só diz "Edit arquivo"; o cru (data/raw) traz o trecho.
@@ -127,7 +139,7 @@ async function seguir(n) {
     if (!t) return;
     if (!mostrouCab && t.agente) { process.stdout.write(cabecalho(t)); mostrouCab = true; }
     const vivo = t.status === "rodando" || t.busy;
-    const aba = (t.paralelo ? "⚡" : "") + (t.agente || "t" + n) + " " + t.project + (vivo ? "" : t.status === "erro" ? " ✗" : " ✓");
+    const aba = (t.paralelo ? "⚡" : "") + (t.agente || "t" + n) + " " + np(t.project) + (vivo ? "" : t.status === "erro" ? " ✗" : " ✓");
     const tit = titulo(t) + (vivo ? " · trabalhando" : " · " + t.status);
     if (aba + tit !== ultimo) { nomeiaAba(aba, tit); ultimo = aba + tit; }
   };
@@ -163,18 +175,20 @@ async function painel() {
     const fila = ts.filter((t) => t.status === "fila");
     let out = "\x1b[2J\x1b[H\n" + K.cyan + K.b + "  ⚡ BOARD" + K.r + K.b + " · agentes agora" + K.r + K.dim + "   " + hora(new Date().toISOString()) + (s ? "" : "  · board fora do ar") + K.r + "\n\n";
     if (!ag.length) out += K.dim + "  ninguém trabalhando — cada agente que começar ganha uma aba lá embaixo\n" + K.r;
-    for (const t of ag) out += "  " + K.amar + "●" + K.r + " " + K.cyan + K.b + (t.paralelo ? "⚡" : "") + "#" + t.agente + K.r + "  " + t.project.padEnd(16) + " " + nomeModelo(t.modeloUsado).padEnd(10) + K.dim + (t.esforcoUsado || "").padEnd(6) + " #" + t.id + K.r + "  " + String(t.title || "").slice(0, 60) + "\n";
+    for (const t of ag) out += "  " + K.amar + "●" + K.r + " " + K.cyan + K.b + (t.paralelo ? "⚡" : "") + "#" + t.agente + K.r + "  " + np(t.project).padEnd(16) + " " + nomeModelo(t.modeloUsado).padEnd(10) + K.dim + (t.esforcoUsado || "").padEnd(6) + " #" + t.id + K.r + "  " + String(t.title || "").slice(0, 60) + "\n";
     out += "\n" + K.b + "  Na fila (" + fila.length + ")" + K.r + "\n";
-    for (const t of fila.sort((a, b) => a.order - b.order).slice(0, 8)) out += "  " + K.dim + "○ #" + t.id + "  " + t.project.padEnd(16) + K.r + " " + (t.paralelo ? "⚡ " : "") + String(t.title || "").slice(0, 70) + "\n";
+    for (const t of fila.sort((a, b) => a.order - b.order).slice(0, 8)) out += "  " + K.dim + "○ #" + t.id + "  " + np(t.project).padEnd(16) + K.r + " " + (t.paralelo ? "⚡ " : "") + String(t.title || "").slice(0, 70) + "\n";
     process.stdout.write(out);
     // As abas moram AQUI, num processo só: três agentes começando no mesmo segundo faziam o servidor
     // pedir três new-window juntos, que brigavam pelo mesmo número e só um abria (24/09).
     try {
       const temAba = new Set();
-      for (const l of tmux("list-panes", "-s", "-t", SESSAO, "-F", "#{window_id} #{pane_start_command}").split("\n")) {
+      for (const l of tmux("list-panes", "-s", "-t", "=" + SESSAO + ":", "-F", "#{window_id} #{pane_start_command}").split("\n")) {
         const m = l.match(/^(\S+) .*seguir (\d+)/); if (!m) continue;
-        temAba.add(Number(m[2]));
         const t = ts.find((x) => x.id === Number(m[2]));
+        // Duas abas da mesma tarefa: fica a primeira (05/10: a #180 e a #182 apareceram duas vezes cada).
+        if (temAba.has(Number(m[2]))) { tmux("kill-window", "-t", m[1]); continue; }
+        temAba.add(Number(m[2]));
         if (t && t.status === "concluida") tmux("kill-window", "-t", m[1]); // a executada/erro fica: ainda pede olho
       }
       for (const t of ag) if (!temAba.has(t.id)) abrirAba(t);
@@ -189,14 +203,15 @@ async function resumo() {
   const trab = s.tasks.filter((t) => t.status === "rodando" || t.busy).length, fila = s.tasks.filter((t) => t.status === "fila").length;
   console.log(trab + " trabalhando · " + fila + " na fila");
 }
-const tmux = (...args) => rodar("tmux", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+// BOARD_TMUX / BOARD_TMUX_SOCKET: o mesmo tmux (e o mesmo servidor, -L) que o board lê nas Sessões e na vista dos agentes.
+const tmux = (...args) => rodar(process.env.BOARD_TMUX || "tmux", [...(process.env.BOARD_TMUX_SOCKET ? ["-L", process.env.BOARD_TMUX_SOCKET] : []), ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 // Aba nova nasce em segundo plano, MAS se o dono está olhando o painel o tmux vai até ela: sem isso
 // o agente ficava numa aba lá embaixo e parecia que "não abriu" (24/09). Quem já está vendo outro
 // agente não é arrancado de lá.
 function abrirAba(t, focar) {
   let noPainel = false;
-  try { noPainel = tmux("display-message", "-p", "-t", SESSAO, "#{window_name}") === "painel"; } catch { /* sem cliente */ }
-  const id = tmux("new-window", "-d", "-P", "-F", "#{window_id}", "-t", SESSAO + ":", "-n", (t.paralelo ? "⚡" : "") + t.agente + " " + t.project,
+  try { noPainel = tmux("display-message", "-p", "-t", "=" + SESSAO + ":", "#{window_name}") === "painel"; } catch { /* sem cliente */ }
+  const id = tmux("new-window", "-d", "-P", "-F", "#{window_id}", "-t", "=" + SESSAO + ":", "-n", (t.paralelo ? "⚡" : "") + t.agente + " " + np(t.project),
     '"' + process.execPath + '" "' + juntar(AQUI, "board-cli.mjs") + '" seguir ' + t.id);
   if (focar ?? noPainel) { try { tmux("select-window", "-t", id); } catch { /* sumiu */ } }
   return id;
@@ -270,19 +285,25 @@ function estilo(cli, node) {
   w("window-status-current-format", "#[bg=#a78bfa,fg=#0f1117,bold] #I #[bg=#282e3b,fg=#e8ecf1] #W ");
   w("window-status-separator", " ");
 }
-async function agentesTmux(abrir) {
+async function agentesTmux(abrir, montar) {
+  // --montar (o 🖥 do board numa máquina sem tela, #248): só garante a sessão; a que já existe fica, com quem a assiste.
+  if (montar) { try { tmux("has-session", "-t", "=" + SESSAO); console.log('tmux "' + SESSAO + '" já estava aberto.'); return; } catch { /* não existe: monta */ } }
   const s = await call("/state");
   const ag = s.tasks.filter((t) => (t.status === "rodando" || t.busy) && t.agente);
   const cli = juntar(AQUI, "board-cli.mjs"), node = process.execPath;
-  try { tmux("kill-session", "-t", SESSAO); } catch { /* não havia */ }
+  try { tmux("kill-session", "-t", "=" + SESSAO); } catch { /* não havia */ } // "=": só a exata, nunca a "board-agentes-x" de outro
   tmux("new-session", "-d", "-s", SESSAO, "-n", "painel", "-x", "220", "-y", "60", '"' + node + '" "' + cli + '" painel');
   estilo(cli, node);
-  // Abre já na aba do primeiro agente trabalhando (o painel continua a um clique).
-  ag.forEach((t, i) => abrirAba(t, i === 0));
+  // As abas dos agentes são do PAINEL, só dele: abrir aqui também fazia cada agente que já trabalhava
+  // ganhar DUAS abas (este processo e o painel recém-nascido abriam a mesma, 05/10). Na 1ª volta o
+  // painel é a aba atual, então ele já leva o dono para a aba do primeiro agente.
   console.log('tmux "' + SESSAO + '": aba "painel" + ' + ag.length + " aba(s) de agente. Agente novo ganha aba sozinho.");
+  if (montar) return;
   if (process.env.TMUX) { tmux("switch-client", "-t", SESSAO); return; }
   if (abrir) {
-    rodar("osascript", ["-e", 'tell application "Terminal" to do script "tmux attach -t ' + SESSAO + '"', "-e", 'tell application "Terminal" to activate']);
+    // O 🖥 do board espera a resposta: falhou, a mensagem limpa vai ao stderr e vira o toast (nunca calado, #248).
+    try { rodar("osascript", ["-e", 'tell application "Terminal" to do script "tmux attach -t ' + SESSAO + '"', "-e", 'tell application "Terminal" to activate'], { stdio: ["ignore", "pipe", "pipe"] }); }
+    catch (e) { console.error("o Terminal não abriu: " + (String(e.stderr || "").trim() || e.message)); process.exit(1); }
     return;
   }
   if (process.stdout.isTTY) spawnSync("tmux", ["attach", "-t", SESSAO], { stdio: "inherit" });
@@ -295,17 +316,20 @@ if (cmd === "add") {
   const [text, project] = rest;
   if (!text) { console.error('uso: board add "<texto>" [projeto] [--fila]'); process.exit(1); }
   const d = await call("/tasks", "POST", { text, project, queue, paralelo, entrega: pr ? "pr" : "direto" });
-  for (const t of d.tasks) console.log(`#${t.id} ${t.title} (${t.project}, ${LABEL[t.status]}${t.entrega === "pr" ? ", PR" : ""})`);
+  await rotulos();
+  for (const t of d.tasks) console.log(`#${t.id} ${t.title} (${np(t.project)}, ${LABEL[t.status]}${t.entrega === "pr" ? ", PR" : ""})`);
 } else if (cmd === "list" || !cmd) {
   const d = await call("/state");
   const order = { rodando: 0, fila: 1, pendente: 2, erro: 3, executada: 4, concluida: 5 };
   for (const t of d.tasks.sort((x, y) => (order[x.status] - order[y.status]) || (x.order - y.order)))
-    console.log(`${t.status === "concluida" ? "[x]" : "[ ]"} #${String(t.id).padEnd(3)} ${LABEL[t.status].padEnd(10)} ${(t.entrega === "pr" ? "PR " : "   ")}${t.project.padEnd(16)} ${t.title}`);
+    console.log(`${t.status === "concluida" ? "[x]" : "[ ]"} #${String(t.id).padEnd(3)} ${(t.worktree?.juntar === "conflito" && !t.worktree.removida && t.status !== "concluida" ? "NÃO JUNTADA" : t.prVigia?.estado === "esgotado" ? "PR PRESO" : t.conferir && t.status === "fila" ? "A CONFERIR" : LABEL[t.status]).padEnd(10)} ${(t.entrega === "pr" ? "PR " : "   ")}${np(t.project).padEnd(16)} ${t.title}`);
   if (!d.tasks.length) console.log("(quadro vazio)");
 } else if (cmd === "show") {
   const d = await call(`/tasks/${id()}/log`);
   const t = d.task;
-  console.log(`#${t.id} [${LABEL[t.status]}${t.etapa ? ":" + t.etapa : ""}] ${t.project}${t.entrega === "pr" ? " · entrega por PR" : ""}${t.gate ? " · portão " + (t.gate.ok ? "✓" : "✗") : ""}${t.revisor ? " · revisor " + t.revisor.veredito : ""}${t.prUrl ? " · " + t.prUrl : ""}\n${t.text}\n`);
+  await rotulos();
+  console.log(`#${t.id} [${LABEL[t.status]}${t.etapa ? ":" + t.etapa : ""}] ${np(t.project)}${t.entrega === "pr" ? " · entrega por PR" : ""}${t.gate ? " · portão " + (t.gate.ok ? "✓" : "✗") : ""}${t.revisor ? " · revisor " + t.revisor.veredito : ""}${t.prUrl ? " · " + t.prUrl : ""}\n${t.text}\n`);
+  for (const s of t.sobras || []) console.log(`🧹 sobra (${s.quem === "qa" ? "QA" : "revisor"}): ${s.texto}`);
   let last = null;
   for (const ev of d.events.slice(-40)) {
     if (ev.t === "texto") { console.log(ev.texto); last = ev.texto.trim(); }
@@ -333,11 +357,103 @@ else if (cmd === "say") {
   await barra();
 } else if (cmd === "resumo") {
   await resumo();
+} else if (cmd === "monitor") {
+  // #350: o painel em modo texto do monitor do Atena (só leitura). `--uma-vez` imprime uma tela e sai.
+  process.exit(spawnSync(process.execPath, [juntar(AQUI, "painel.mjs"), ...a], { stdio: "inherit" }).status ?? 0);
 } else if (cmd === "painel") {
   await painel();
 } else if (cmd === "agentes") {
-  await agentesTmux(a.includes("--abrir"));
+  await agentesTmux(a.includes("--abrir"), a.includes("--montar"));
+} else if (cmd === "aprovacao" || cmd === "aprovação") {
+  // Conferir o SIM que a Central trouxe (#213). Fail-closed: board fora do ar, id que não existe, vencido ou que não
+  // cobre o pedido → código 1 e "NÃO VALE". Não existe comando que GRAVE aprovação: só a tela da Central grava.
+  const [ida, ...resto] = a; const acao = resto.join(" ");
+  if (!ida) { console.error('uso: board aprovacao <id> "<o que te pediram>"'); process.exit(2); }
+  let d;
+  try { const r = await fetch(BASE + "/api/aprovacoes/" + encodeURIComponent(String(ida).replace(/^#/, "")) + "?acao=" + encodeURIComponent(acao)); d = await r.json(); }
+  catch { console.log("✗ NÃO VALE — o board está fora do ar: não dá para conferir a aprovação"); process.exit(1); }
+  const ap = d.aprovacao;
+  console.log((d.ok ? "✓ CONFERE" : "✗ NÃO VALE") + " — " + d.motivo);
+  if (ap) {
+    console.log(`texto do dono: "${ap.texto}"`);
+    if (ap.refere) console.log(`sobre${ap.refere.n ? " R" + ap.refere.n : ""}: ${ap.refere.pedido ? "PEDIDO DE SIM: " + ap.refere.pedido : '"' + ap.refere.trecho + '"'}`);
+    console.log(`hora: ${new Date(ap.em).toLocaleString("pt-BR")} (há ${ap.idadeHoras} h; vale ${ap.validaPorHoras} h)`);
+  }
+  process.exit(d.ok ? 0 : 1);
+} else if (cmd === "tela") {
+  await mudarTela(a.join(" "));
+} else if (cmd === "navegador") {
+  await navegador(a);
 } else {
-  console.log(`board — uso:\n  add "<texto>" [projeto] [--fila] [--pr] · list · show <id> · run <id> · stop <id> · done <id> · say <id> "<msg>" · rm <id> · pausar · retomar · reiniciar · agentes [--abrir] · seguir <id>`);
+  console.log(`board — uso:\n  add "<texto>" [projeto] [--fila] [--pr] · list · show <id> · run <id> · stop <id> · done <id> · say <id> "<msg>" · rm <id> · pausar · retomar · reiniciar · agentes [--abrir] · seguir <id> · aprovacao <id> "<pedido>" · tela <destino> · navegador <ação>`);
 }
 
+
+// ── mudar a tela do dono (#293): diz o que a TELA respondeu; quem pediu nunca ouve "mudou" sem ela ter mudado ──
+async function mudarTela(destino) {
+  if (!destino) { console.error("uso: board tela <destino> — quadro · central · conversa [projeto] · sessoes · busca · prs · controle · tarefa <número> · sessao <nome> · link <endereço http(s)>"); process.exit(2); }
+  const nao = /^link\s/i.test(destino) ? "✗ o link não abriu: " : "✗ a tela não mudou: ";
+  let r, d;
+  // `quem` é declarado (o board põe BOARD_QUEM nos processos que sobe), como o nome no registro do navegador: vai para o log do link.
+  try { r = await fetch(BASE + "/api/tela", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ destino, quem: process.env.BOARD_QUEM || "terminal" }) }); d = await r.json(); }
+  catch { console.log(nao + "o board está fora do ar"); process.exit(1); }
+  if (!r.ok) { console.log(nao + d.error); process.exit(1); }
+  console.log({
+    mudou: "✓ a tela mudou: " + d.destino,
+    abriu: `✓ o navegador abriu uma aba nova: ${d.destino}`,
+    bloqueou: `⏸ a aba não abriu: o navegador bloqueou o pop-up; ${d.destino} ficou na tela para o dono clicar, com o aviso de como liberar`,
+    segurou: d.link ? `⏸ a aba não abriu: o dono estava digitando; ${d.destino} ficou na tela para ele clicar` : `⏸ a tela não mudou: o dono estava digitando; ficou um aviso com o botão para abrir ${d.destino}`,
+  }[d.resultado]);
+}
+
+// ── o navegador dos agentes (#217): o mesmo do MCP, pelo terminal ─────────────
+async function navegador(args) {
+  const [acao, ...r] = args;
+  const op = (nome) => { const i = r.indexOf("--" + nome); if (i < 0) return undefined; const v = r[i + 1]; r.splice(i, 2); return v; };
+  const quem = process.env.BOARD_NAVEGADOR_QUEM || "terminal (board navegador)";
+  const uso = `uso: board navegador <ação>
+  abrir <url>                                  · ler [arvore]
+  clicar <texto> | --seletor <css>
+  (toda ação aceita --aprovacao <id> --pedido "<PEDIDO DE SIM aprovado>": sem ele, escrita/ação que a página
+   tentar é BARRADA na rede e o comando sai com código 3, dizendo qual requisição parou)
+  preencher <rótulo> <valor> | --seletor <css> <valor>
+  subir <arquivo…> [--seletor <css>]           · esperar <texto> | --seletor <css> [--ms N]
+  captura · logar [url] · fechar · registro`;
+  if (!acao) { console.log(uso); process.exit(2); }
+  const ir = async (rota, corpo) => {
+    let res; try { res = await fetch(BASE + "/api/navegador" + rota, { method: corpo ? "POST" : "GET", headers: { "content-type": "application/json" }, body: corpo ? JSON.stringify({ ...corpo, quem }) : undefined }); }
+    catch { console.error("✗ o board está fora do ar (é ele quem tem o navegador)"); process.exit(1); }
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { console.error((d.recusado ? "✗ RECUSADO — " : "✗ ") + (d.error || res.status)); process.exit(d.recusado ? 3 : 1); }
+    return d;
+  };
+  let d;
+  if (acao === "registro" || acao === "estado") {
+    d = await ir("?n=" + (Number(r[0]) || 30));
+    console.log(`${d.rodando ? "● rodando" : d.logando ? "● aberto para logar" : "○ parado"} · perfil ${d.perfil}${d.url ? " · " + d.url : ""}`);
+    for (const e of d.registro) console.log(`${hora(e.at)} ${e.ok ? "✓" : e.recusado ? "⛔" : "✗"} ${e.quem} · ${e.acao}${e.alvo ? " " + e.alvo : ""}${e.risco ? " [" + e.risco + (e.aprovacao ? " · " + e.aprovacao : "") + "]" : ""}${e.erro ? " — " + e.erro : ""}`);
+    return;
+  }
+  if (acao === "logar") { d = await ir("/logar", { url: r[0] || "" }); console.log(d.jaAberto ? "a janela já está aberta" : `✓ Chrome aberto com o perfil ${d.perfil} — logue nas contas e, ao terminar, rode \`board navegador fechar\` (ou feche a janela: o board percebe sozinho)`); return; }
+  if (acao === "fechar") {
+    d = await ir("/fechar", {});
+    if (d.logando || d.rodando) { console.error("✗ o navegador continua aberto" + (d.loginPid ? ` (Chrome de login, pid ${d.loginPid})` : "")); process.exit(1); }
+    if (!d.login) { console.log("✓ navegador fechado (as contas ficam no perfil)"); return; }
+    console.log(`✓ Chrome de login encerrado${d.forcado ? " (à força: não saiu nem com SIGTERM)" : d.limpo === false ? " (com SIGTERM: o que mudou nos últimos ~30 s pode não ter sido gravado)" : ""} — os agentes voltam a usar o perfil`);
+    if (Array.isArray(d.cookies)) console.log(d.cookies.length ? `  cookies gravados neste login: ${d.cookies.slice(0, 8).map((x) => `${x.site} (${x.n})`).join(", ")}` : "  ⚠ nenhum cookie novo foi gravado neste login: se você entrou numa conta, ela NÃO ficou salva");
+    return;
+  }
+  // O SIM vale para qualquer ação: quem decide é a requisição que a página mandar.
+  const corpo = { aprovacao: op("aprovacao"), pedido: op("pedido") };
+  if (acao === "abrir") corpo.url = r[0];
+  else if (acao === "ler") corpo.modo = r[0] === "arvore" ? "arvore" : "texto";
+  else if (acao === "clicar") { corpo.seletor = op("seletor"); if (!corpo.seletor) corpo.texto = r.join(" "); }
+  else if (acao === "preencher") { corpo.seletor = op("seletor"); if (corpo.seletor) corpo.valor = r.join(" "); else { corpo.rotulo = r[0]; corpo.valor = r.slice(1).join(" "); } }
+  else if (acao === "subir") { corpo.seletor = op("seletor"); corpo.arquivos = r.map((f) => resolverCaminho(f)); }
+  else if (acao === "esperar") { corpo.seletor = op("seletor"); corpo.ms = Number(op("ms")) || undefined; if (!corpo.seletor && r.length) corpo.texto = r.join(" "); }
+  else if (acao !== "captura") { console.log(uso); process.exit(2); }
+  d = await ir("/" + acao, corpo);
+  if (acao === "ler" && d.texto != null) { console.log(`${d.titulo} — ${d.url}\n\n${d.texto}\n\n── controles ──\n${(d.controles || []).join("\n")}`); return; }
+  if (acao === "ler" && d.arvore != null) { console.log(`${d.titulo} — ${d.url}\n\n${d.arvore}`); return; }
+  console.log("✓ " + JSON.stringify(d));
+}

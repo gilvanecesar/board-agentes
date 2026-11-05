@@ -27,7 +27,7 @@ function buscaResultadosHtml() {
   const r = BUSCA.res;
   if (BUSCA.buscando) return `<div class="empty">buscando…</div>`;
   if (!r) return `<div class="empty">Escreva o que você procura — vale descrever de memória: <i>"aquela do rate limit que ficou no nginx"</i>.</div>`;
-  if (!r.resultados.length) return `<div class="empty">Nada parecido com <b>${esc(r.consulta)}</b>${r.projeto && r.projeto !== "todos" ? ` em ${esc(r.projeto)}` : ""}.</div>`;
+  if (!r.resultados.length) return `<div class="empty">Nada parecido com <b>${esc(r.consulta)}</b>${r.projeto && r.projeto !== "todos" ? ` em ${esc(nomeProj(r.projeto))}` : ""}.</div>`;
   return `<div class="bcount">${r.resultados.length} tarefa(s) · busca ${MODO_TXT[r.modo] || r.modo}${r.modo === "semantica" ? ` (${esc(r.provedor)})` : ""} · ${r.ms} ms${r.aviso ? ` · ${esc(r.aviso)}` : ""}</div>`
     + r.resultados.map((t) => {
       const pct = Math.round(t.score * 100);
@@ -35,7 +35,7 @@ function buscaResultadosHtml() {
         <div class="bscore" title="parecença com o que você escreveu"><div class="bbar"><i style="width:${pct}%"></i></div><span>${pct}%</span></div>
         <div class="bmain">
           <div class="title">${esc(t.title)}</div>
-          <div class="meta"><span>#${t.id}</span><span class="proj">${esc(t.project)}</span><span class="pill ${esc(t.status)}" style="min-width:0">${esc(STATUS_LABEL[t.status] || t.status)}</span>${t.entrega === "pr" || t.entrega === "deploy" ? `<span class="tag-pr">PR</span>` : ""}<span>${esc(fmtDay(t.finishedAt || t.createdAt))}</span></div>
+          <div class="meta"><span>#${t.id}</span><span class="proj">${esc(nomeProj(t.project))}</span><span class="pill ${esc(t.status)}" style="min-width:0">${esc(STATUS_LABEL[t.status] || t.status)}</span>${t.entrega === "pr" || t.entrega === "deploy" ? `<span class="tag-pr">PR</span>` : ""}<span>${esc(fmtDay(t.finishedAt || t.createdAt))}</span></div>
           <div class="btrecho">${esc(t.trecho)}</div>
         </div>
       </div>`;
@@ -49,7 +49,7 @@ function buscaHistoricoHtml() {
   return `<div class="bhist"><h3>Buscas recentes</h3>${BUSCA.hist.map((h, i) => `
     <div class="bh" onclick="refazerBusca(${i})">
       <span class="q">${esc(h.consulta)}</span>
-      <span class="s">${esc(fmtDay(h.at))} · ${esc(h.projeto || "todos")} · ${MODO_TXT[h.modo] || esc(h.modo)} · ${(h.achados || []).length ? (h.achados || []).map((a) => "#" + a.id).join(" ") : "nada"}</span>
+      <span class="s">${esc(fmtDay(h.at))} · ${esc(h.projeto ? nomeProj(h.projeto) : "todos")} · ${MODO_TXT[h.modo] || esc(h.modo)} · ${(h.achados || []).length ? (h.achados || []).map((a) => "#" + a.id).join(" ") : "nada"}</span>
     </div>`).join("")}</div>`;
 }
 
@@ -65,11 +65,12 @@ async function renderBusca() {
   // Já estou na busca: o board manda evento o tempo todo — redesenhar apagaria o que ele digita.
   if (app.dataset.busca === "1" && $("#buscaIn")) { renderHeader(); return; }
   app.dataset.busca = "1"; delete app.dataset.task; delete app.dataset.conversa;
-  app.className = "wrap";
+  app.className = "wrap com-inspetor busca";
   BUSCA.projeto = store.get("buscaProjeto", "todos");
   if (!(S.projects || []).some((p) => p.slug === BUSCA.projeto)) BUSCA.projeto = "todos";
-  app.innerHTML = headerHtml(voltar) + workspaceIntro('busca') + buscaHead()
-    + `<div id="buscaRes">${buscaResultadosHtml()}</div><div id="buscaHist">${buscaHistoricoHtml()}</div>`;
+  // Cockpit (#364): a busca no meio e as buscas recentes no inspetor à direita.
+  app.innerHTML = headerHtml(voltar) + workspaceIntro('busca') + mheadHtml("Buscar", `<span class="chip" id="buscaModo">tarefas e memória, pelo sentido</span>`) + buscaHead()
+    + `<div id="buscaRes">${buscaResultadosHtml()}</div><aside class="inspetor" id="buscaHist" aria-label="Buscas recentes">${buscaHistoricoHtml()}</aside>`;
   const campo = $("#buscaIn");
   let timeoDebounce;
   campo.addEventListener("input", () => {
@@ -115,7 +116,7 @@ function buscaMemoriaHtml() {
     : m.vazio ? `<div class="docker-vazio">${esc(m.motivo === "endereçamento não aprovado" ? "a memória ainda não tem o endereçamento aprovado" : "nada na memória sobre isso")}</div>`
     : !itens.length ? `<div class="docker-vazio">nada na memória sobre isso</div>`
     : itens.map((i) => `<button class="mem-hit" onclick="irParaMemoria(${esc(JSON.stringify(i.chave))})"><span>${ICONE_MENTE[i.mente] || ""} ${esc(i.titulo)}</span><small>${esc(i.chave.split("/")[0])} · relevância ${i.nota}</small></button>`).join("");
-  return `<section class="busca-mem"><div class="busca-mem-cab"><b>Na memória</b><span>o que os agentes já guardaram sobre isso · abre no menu Memória</span></div>${corpo}</section>`;
+  return `<section class="busca-mem"><div class="busca-mem-cab"><b>Na memória</b><span>o que os agentes já guardaram sobre isso · clique para ler a página</span></div>${corpo}</section>`;
 }
 
 async function carregarEstadoBusca() {

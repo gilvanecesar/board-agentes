@@ -4,7 +4,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { writeFileSync, existsSync, cpSync } from "node:fs";
+import { writeFileSync, existsSync, cpSync, readFileSync, chmodSync } from "node:fs";
 import { spawn, execFileSync } from "node:child_process";
 import { criarCaixa, criarProjeto, subirBoard, limparCaixa, esperar, esperarStatus, chamadas, envDaCaixa, portaLivre, servidorDeSentido } from "./ajuda.mjs";
 import { abrirNavegador, CHROME } from "./navegador.mjs";
@@ -91,7 +91,7 @@ test("portão pendurado: é morto no tempo, com o GRUPO de processos (sem órfã
     antes: (c) => writeFileSync(join(c.dev, "demo", "package.json"), JSON.stringify({ name: "demo", scripts: { check: `bash -c 'sleep ${marca}'` } })) });
   const [t] = (await b.api("POST", "/api/tasks", { text: "faça", project: "demo", queue: true })).json.tasks;
   const fim = await esperarStatus(b, t.id, ["executada", "erro"], 20000);
-  assert.equal(fim.status, "erro"); assert.match(fim.error, /portão reprovou/);
+  assert.equal(fim.status, "erro"); assert.match(fim.error, /portão passou de 0.03 min e foi interrompido.*não é teste falhando/);
   const ev = (await b.api("GET", `/api/tasks/${t.id}/log`)).json.events.find((e) => e.t === "portao" && e.estado === "falhou");
   assert.match(ev.saida, /passou de 0.03 min e foi interrompido/);
   await esperar(300);
@@ -120,25 +120,24 @@ test("tela: o menu lateral leva a cada lugar; ✓ ⏹ 🗑 na linha; Virar PR, p
   const ir = async (hash = "", local = {}) => { await nav.carregar("about:blank"); await nav.carregar(b.url + "/?a" + Math.random()); await nav.avaliar(`localStorage.clear(); ${Object.entries(local).map(([k, v]) => `localStorage.setItem("board.${k}", ${JSON.stringify(JSON.stringify(v))});`).join(" ")}`); await nav.carregar(b.url + "/?b" + Math.random() + hash); await nav.quieto({ min: 400 }); };
   const espera = async (expr) => { for (let i = 0; i < 100; i++) { if (await nav.avaliar(expr)) return; await esperar(120); } throw new Error("não chegou: " + expr); };
   // menu lateral
-  await ir("", { tab: "ativas" });
-  for (const [chave, prova] of [["controle", `!!document.querySelector("#controle")`], ["consumo", `!!document.querySelector("#consumo")`], ["memoria", `!!document.querySelector("#memoria")`],
-    ["monitoring", `!!document.querySelector("#monitoring")`], ["busca", `location.hash === "#/busca"`], ["conversa", `location.hash.startsWith("#/c/")`], ["board", `!!document.querySelector("#newTask")`]]) {
+  await ir("", { tab: "ativas", visao: "lista" }); // ✓ ⏹ 🗑 na linha: a ☰ Lista (o kanban tem um botão por cartão)
+  for (const [chave, prova] of [["controle", `!!document.querySelector("#controle")`], ["sessoes", `location.hash === "#/sessoes"`], ["prs", `location.hash === "#/prs"`], ["busca", `location.hash === "#/busca"`], ["conversa", `location.hash.startsWith("#/c/")`], ["board", `!!document.querySelector("#newTask")`]]) {
     await espera(`(() => { const b = document.querySelector('.nav-item[onclick="navigateBoard(\\'${chave}\\')"]'); if (!b) return false; b.click(); return true; })()`);
     await espera(prova);
   }
   // linha: ✓ concluir, ⏹ parar, 🗑 excluir (com confirmação, porque tem sessão)
   const [ok1] = (await b.api("POST", "/api/tasks", { text: "rápida", project: "demo", queue: true })).json.tasks;
   await esperarStatus(b, ok1.id, "executada");
-  await ir("", { tab: "executadas" });
+  await ir("", { tab: "executadas", visao: "lista" });
   await espera(`(() => { const b = document.querySelector('.task[data-id="${ok1.id}"] .chk'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, ok1.id)).status === "concluida");
   const [lenta] = (await b.api("POST", "/api/tasks", { text: "demora bastante", project: "demo", queue: true })).json.tasks;
   await ate(async () => (await tarefa(b, lenta.id)).status === "rodando");
-  await ir("", { tab: "ativas" });
+  await ir("", { tab: "ativas", visao: "lista" });
   await espera(`!!document.querySelector('.task[data-id="${lenta.id}"] button[title="Parar"]')`);
   await espera(`(() => { const b = document.querySelector('.task[data-id="${lenta.id}"] button[title="Parar"]'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await tarefa(b, lenta.id)).status === "pendente");
-  await ir("", { tab: "concluidas" });
+  await ir("", { tab: "concluidas", visao: "lista" });
   await espera(`(() => { const b = document.querySelector('.task[data-id="${ok1.id}"] .del'); if (!b) return false; b.click(); return true; })()`);
   await ate(async () => (await b.api("GET", `/api/tasks/${ok1.id}`)).status === 404);
   assert.match(nav.dialogos.join("\n"), new RegExp(`Excluir a tarefa #${ok1.id}`), "pediu confirmação (tinha sessão)");
@@ -164,7 +163,7 @@ test("tela: trocar de tela ANTES de a anterior terminar de carregar não quebra 
   const { b } = await preparar();
   const nav = await abrirNavegador(); atual.push(() => nav.fechar());
   await nav.carregar(b.url + "/?a"); await nav.quieto({ min: 300 }); nav.erros.length = 0;
-  const telas = ["memoria", "controle", "consumo", "monitoring", "busca", "board", "memoria", "consumo", "controle", "monitoring", "memoria", "board"];
+  const telas = ["controle", "prs", "busca", "board", "sessoes", "controle", "prs", "board", "busca", "controle", "sessoes", "board"];
   for (let volta = 0; volta < 3; volta++)
     for (const k of telas) { await nav.avaliar(`navigateBoard("${k}")`); await esperar(volta * 15); } // sem esperar a tela carregar
   await esperar(2500); // as respostas atrasadas chegam depois de a tela ter mudado
@@ -192,4 +191,36 @@ test("tmux por dentro: a barra (agentes, fila, plano) e a aba de cada agente (bo
   assert.match(limpo, /#eng01/, "cabeçalho com o agente");
   assert.match(limpo, /começou em demo/);
   assert.match(limpo, /terminei a longa/, "o resultado aparece ao vivo");
+});
+
+// A tmux that keeps its windows in a file (one line "@N <command>") and really starts the painel, like the real one.
+// The painel is a subshell that redirects for good and execs: with `eval "$c" >/dev/null &` the dash (/bin/sh on Ubuntu)
+// keeps a saved copy of the stdout pipe, and `board agentes` (execFileSync) waited forever (Atena, 29/10).
+const FALSO_TMUX = `#!/bin/sh
+J="$HOME/tmux-janelas.txt"
+case "$1" in
+  kill-session) [ -f "$HOME/tmux-painel.pid" ] && kill "$(cat "$HOME/tmux-painel.pid")" 2>/dev/null; rm -f "$J"; exit 0 ;;
+  new-session) for c; do :; done; echo "@0 $c" > "$J"; (eval "exec $c") </dev/null >/dev/null 2>&1 & echo $! > "$HOME/tmux-painel.pid"; exit 0 ;;
+  new-window) for c; do :; done; n=$(($(wc -l < "$J") + 100)); echo "@$n $c" >> "$J"; echo "@$n"; exit 0 ;;
+  list-panes) cat "$J"; exit 0 ;;
+  kill-window) shift; grep -v "^$2 " "$J" > "$J.tmp"; mv "$J.tmp" "$J"; exit 0 ;;
+  display-message) echo painel; exit 0 ;;
+esac
+exit 0
+`;
+test("tmux: cada agente ganha UMA aba, mesmo trabalhando quando a sessão abre; aba repetida é fechada pelo painel", async () => {
+  const { caixa, b } = await preparar({ cenario: { agente: [{ quando: "longa", texto: "terminei", dorme: 12000 }, "ok"] } });
+  writeFileSync(join(caixa.bin, "tmux"), FALSO_TMUX); chmodSync(join(caixa.bin, "tmux"), 0o755);
+  atual.push(async () => { try { process.kill(Number(readFileSync(join(caixa.home, "tmux-painel.pid"), "utf8"))); } catch { /* já saiu */ } });
+  const [longa] = (await b.api("POST", "/api/tasks", { text: "tarefa longa", project: "demo", queue: true })).json.tasks;
+  await ate(async () => (await tarefa(b, longa.id)).status === "rodando");
+  execFileSync(process.execPath, [join(caixa.board, "board-cli.mjs"), "agentes"], { env: { ...envDaCaixa(caixa), BOARD_URL: b.url }, encoding: "utf8" });
+  const janelas = () => readFileSync(join(caixa.home, "tmux-janelas.txt"), "utf8").split("\n").filter((l) => l.includes("seguir " + longa.id));
+  assert.ok(await ate(async () => janelas().length >= 1, 8000), "o painel abriu a aba do agente");
+  await esperar(4500); // duas voltas do painel
+  assert.equal(janelas().length, 1, "uma aba só para a tarefa que já trabalhava");
+  const linha = janelas()[0].replace(/^@\d+/, "@999");
+  writeFileSync(join(caixa.home, "tmux-janelas.txt"), readFileSync(join(caixa.home, "tmux-janelas.txt"), "utf8") + linha + "\n");
+  assert.ok(await ate(async () => janelas().length === 1, 5000), "a aba repetida some");
+  assert.ok(!janelas()[0].startsWith("@999 "), "fica a primeira aba, a repetida é a que fecha");
 });

@@ -42,7 +42,7 @@
     border-color: var(--violet);
     box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.2);
   }
-  .composer textarea { width: 100%; resize: none; background: transparent; border: 0; outline: 0; color: var(--txt); font: inherit; font-size: 15px; min-height: 26px; max-height: 240px; line-height: 1.5; }
+  .composer textarea { width: 100%; resize: none; background: transparent; border: 0; outline: 0; color: var(--txt); font: inherit; font-size: 15px; min-height: 26px; line-height: 1.5; padding: 2px 0; overflow-y: hidden; }
   .composer textarea::placeholder { color: var(--dim2); }
   .composer .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .composer select, .composer input.mini {
@@ -72,11 +72,15 @@
   .dhead .fotos { display: flex; flex-wrap: wrap; gap: 8px; }
   .dhead .fotos a { display: block; width: 110px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line2); }
   .dhead .fotos img { width: 100%; display: block; }
-  .ib.clipe {
+  .ib.clipe, .ib.microfone {
     width: 40px !important;
     height: 40px !important;
     font-size: 18px;
     cursor: pointer;
+  }
+  .ib.microfone.gravando {
+    background: #e5484d;
+    color: #fff;
   }
   .composer #addBtn {
     margin-left: auto;
@@ -331,8 +335,8 @@
   .contrib .res { color: var(--dim2); font-size: 12px; font-family: var(--mono); margin-bottom: 6px; }
   .contrib ul { margin: 0; padding-left: 16px; color: var(--dim); font-size: 12.5px; line-height: 1.6; }
   .plano .nota { color: var(--dim2); font-size: 12px; }
-  .uso-cab { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line2); color: var(--dim); font-size: 12px; font-family: var(--mono); cursor: pointer; white-space: nowrap; }
-  .uso-cab:hover { color: var(--txt); border-color: var(--dim); }
+  .uso-cab { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line2); color: var(--dim); font-size: 12px; font-family: var(--mono); white-space: nowrap; }
+  .uso-cab:hover { color: var(--txt); }
   .uso-cab i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
   .uso-cab i.ok { background: var(--green); } .uso-cab i.atencao { background: var(--amber); } .uso-cab i.limite { background: var(--red); }
   .tag-pr { display: inline-flex; align-items: center; height: 18px; color: var(--cyan); border: 1px solid rgba(79,184,230,.4); border-radius: 5px; padding: 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; white-space: nowrap; }
@@ -458,6 +462,9 @@
   .ev.resultado { background: rgba(79,207,127,.07); border: 1px solid rgba(79,207,127,.35); border-radius: 12px; padding: 10px 14px; word-break: break-word; }
   .ev.resultado.slim { padding: 6px 14px; }
   .ev.resultado.slim .k { margin: 0; }
+  /* O número da resposta (R9) é clicável: prepara a resposta citando ela (#202). */
+  .ev.resultado .k .rnum { cursor: pointer; }
+  .ev.resultado .k .rnum:hover { background: rgba(79,207,127,.32); }
   .ev.resultado .k { color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; font-family: var(--mono); margin-bottom: 6px; display: flex; gap: 12px; }
   .ev.mark { color: var(--dim2); font-size: 12px; font-family: var(--mono); text-align: center; padding: 8px 0 2px; }
   .ev.mark.err { color: var(--red); }
@@ -466,7 +473,8 @@
   .thinking::after { content: "…"; animation: blink 1s infinite; }
 
   .chatbox { position: sticky; bottom: 12px; margin-top: 16px; background: var(--panel); border: 1px solid var(--line2); border-radius: 14px; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-end; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
-  .chatbox textarea { flex: 1; resize: none; background: transparent; border: 0; outline: 0; color: var(--txt); font: inherit; font-size: 14.5px; max-height: 200px; line-height: 1.5; }
+  .chatbox textarea { flex: 1; resize: none; background: transparent; border: 0; outline: 0; color: var(--txt); font: inherit; font-size: 14.5px; line-height: 1.5; padding: 2px 0; overflow-y: hidden; }
+  .chatbox .descer { position: absolute; left: 50%; top: -46px; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel); color: var(--cyan); font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.4); white-space: nowrap; }
   .chatbox .note { color: var(--dim2); font-size: 12px; padding: 0 4px 8px; }
 
   /* ⚡ agentes: o nome (#eng01…) e o modelo de quem está trabalhando */
@@ -585,6 +593,15 @@
   .empty strong { display: block; color: var(--txt); font: 600 20px 'Manrope',sans-serif; margin: 16px 0 6px; }
   .empty-icon { display: grid; place-items: center; margin: 0 auto; width: 48px; height: 48px; border: 1px solid #b9ed8033; border-radius: 14px; color: var(--cyan); background: #b9ed8008; font-size: 23px; }
   .grupo { padding: 24px 4px 6px; font: 600 11px 'DM Sans',sans-serif; letter-spacing: 1px; }
+  .paginacao { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 0 8px; color: var(--dim); font-size: 12px; }
+  .pag-nums { display: flex; align-items: center; gap: 4px; }
+  .pag { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--dim); font-size: 12px; }
+  .pag:hover:not(:disabled) { color: var(--txt); border-color: var(--dim); }
+  .pag.on { background: #b9ed800d; color: var(--cyan); border-color: #516345; }
+  .pag:disabled { opacity: .35; cursor: default; }
+  .pag-gap { padding: 0 4px; color: var(--dim2); }
+  .pag-por { display: flex; align-items: center; gap: 6px; }
+  .pag-por select { height: 32px; min-width: 64px; font-size: 12px; padding: 0 8px; }
   .detail { max-width: 1120px; }
   .dtop { padding-bottom: 16px; }
   .dtop header { min-height: 72px; }
@@ -594,6 +611,8 @@
   .timeline { gap: 14px; padding: 12px 0 100px; }
   .ev.texto { padding: 22px; border-radius: 4px 14px 14px 14px; }
   .ev.dono { padding: 16px 20px; border-radius: 14px 4px 14px 14px; background: #b9ed800b; border-color: #b9ed8028; }
+  .ev.dono.navez { border-style: dashed; }
+  .ev.dono .k { font-size: 11px; opacity: .75; margin-bottom: 6px; white-space: normal; }
   .ev .at { font-size: 10px; margin-bottom: 9px; }
   .md { font-size: 14px; line-height: 1.85; }
   .chatbox { border-color: #4c5e43; padding: 14px; border-radius: 12px; box-shadow: 0 8px 40px #0008; }
@@ -704,12 +723,13 @@
   .network-wires .wire-base { stroke:#324336; stroke-width:6; stroke-dasharray:none; opacity:.35; }
   .network-wires [data-state=online] { stroke:#b9ed80; }
   .network-wires [data-state=offline] { stroke:var(--red); opacity:.6; }
+  .network-wires [data-state=oculto] { display:none; } /* #246: no servidor não há cópia Mac → Atena */
   .network-orbit { position:absolute; left:47%; top:40%; transform:translate(-50%,-50%); border:1px solid #b9ed8014; border-radius:50%; z-index:-1; }
   .orbit-outer { width:330px; height:330px; border-style:dashed; }
   .orbit-inner { width:266px; height:266px; background:#b9ed8003; }
   .network-node { position:absolute; transform:translate(-50%,-50%); width:158px; min-height:136px; background:linear-gradient(145deg,#242e27,#19201c); border:1px solid #48584b; border-radius:14px; display:flex; align-items:center; flex-direction:column; padding:17px 10px 14px; box-shadow:0 12px 25px #0004,inset 0 1px #ffffff08; }
   .node-mac { left:14%; top:40%; }
-  .node-saturno { left:74%; top:40%; }
+  .node-atena { left:74%; top:40%; }
   .node-googleDrive { left:47%; top:85%; min-height:100px; width:186px; padding:12px; }
   .node-aiMemory { left:47%; top:40%; width:182px; min-height:186px; border-color:#b9ed8070; background:linear-gradient(145deg,#31422c,#1c281d); box-shadow:0 0 60px #b9ed800d,0 20px 40px #0005,inset 0 1px #d9ffc530; }
   .node-icon { color:#b9c9bc; width:30px; height:30px; margin-bottom:8px; }
@@ -924,6 +944,7 @@
   .ctl-motores { display: flex; flex-wrap: wrap; gap: 6px; }
   .ctl-motores span { font: 11px var(--mono); padding: 5px 10px; border-radius: 20px; border: 1px solid #b9ed8040; color: var(--cyan); }
   .ctl-motores span[data-state=erro] { color: var(--red); border-color: #f1948e55; }
+  .ctl-motores span[data-state=nada] { color: var(--dim2); border-color: var(--line, #ffffff20); } /* #246: não instalado nesta máquina */
   .ctl-cap { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; font-size: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
   .ctl-cap span:not(:first-child) { color: var(--dim); font: 11px var(--mono); }
   .ctl-recentes { padding: 20px 24px; display: grid; gap: 2px; align-content: start; max-height: 520px; overflow-y: auto; }
@@ -968,12 +989,12 @@
     .network-heading { align-items:flex-start; flex-direction:column; gap:15px; padding:20px; }
     .network-heading h2 { font-size:21px; }
     .network-map { height:440px; }
-    .node-mac { left:17% !important; }.node-saturno { left:83% !important; }.node-aiMemory, .node-googleDrive, .network-orbit { left:50% !important; }
+    .node-mac { left:17% !important; }.node-atena { left:83% !important; }.node-aiMemory, .node-googleDrive, .network-orbit { left:50% !important; }
     .network-node { width:94px; min-height:119px; padding:12px 5px; border-radius:10px; }
     .network-node strong { font-size:12px; }
     .node-description { font-size:8px; text-align:center; }
     .node-icon { width:23px; height:23px; }
-    .node-mac { left:17%; top:35%; }.node-saturno { left:83%; top:35%; }
+    .node-mac { left:17%; top:35%; }.node-atena { left:83%; top:35%; }
     .node-aiMemory { top:35%; width:112px; min-height:168px; }
     .node-googleDrive { top:77%; width:144px; min-height:100px; }
     .memory-pages { font-size:24px; }.memory-pages small { font-size:7px; }
@@ -989,3 +1010,825 @@
   }
   .rom-aviso { font-size: 12px; color: var(--dim); padding: 4px 0 6px; }
   .giro-nota { display: block; font-size: 12px; color: var(--dim); margin: -2px 0 8px; }
+
+/* Aviso "parece ser de outro projeto" (23/10): a tarefa espera o dono mover ou confirmar. */
+.aviso-projeto { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--amber, #e6b450); border-radius: 10px;
+  background: color-mix(in srgb, var(--amber, #e6b450) 12%, transparent); font-size: 13px; line-height: 1.5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; cursor: default; }
+.aviso-projeto .btn { min-height: 32px; padding: 4px 12px; }
+
+/* Pull Requests (#/prs, 23/10): um grupo por projeto, uma linha por PR, "Mesclar" à direita. */
+.pr-topo { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 12px; color: var(--dim); font-size: 13px; }
+.pr-projeto { margin-bottom: 22px; }
+.pr-projeto .grupo { display: flex; align-items: center; gap: 10px; }
+.pr { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin-top: 8px; }
+.pr-main { flex: 1; min-width: 0; }
+.pr-titulo { color: var(--txt); font-weight: 600; text-decoration: none; }
+.pr-titulo:hover { text-decoration: underline; }
+.pr .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; font-size: 12px; color: var(--dim); }
+.pr-checks.ok { color: var(--green); } .pr-checks.falhou { color: var(--red); } .pr-checks.rodando { color: var(--amber); }
+.pr-alerta { color: var(--amber); font-weight: 600; } .pr-atualizando { color: var(--cyan, var(--green)); font-weight: 600; } .pr-ok { color: var(--green); } .pr-mudo { color: var(--dim); font-size: 12px; }
+.pr-tarefa { color: var(--cyan); }
+.pr-mesclados { margin-top: 8px; color: var(--dim); font-size: 13px; }
+.pr-mesclados summary { cursor: pointer; padding: 4px 0; }
+.pr-feito { justify-content: space-between; opacity: .8; }
+@media (max-width: 760px) { .pr { flex-direction: column; align-items: stretch; } }
+/* 🚀 Publicar por projeto (#205): versão no ar × main e o botão que só o dono clica */
+.pub { margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 12px; background: var(--panel); font-size: 13px; }
+.pub-off { border-left-color: var(--line2); color: var(--dim); }
+.pub-off code { font-size: 12px; }
+.pub-linha { display: flex; align-items: center; gap: 14px; }
+.pub-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.pub-pe { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.pub-pe:empty { display: none; }
+.pub-log { max-height: 320px; overflow: auto; margin-top: 8px; white-space: pre-wrap; font-size: 12px; }
+@media (max-width: 760px) { .pub-linha { flex-direction: column; align-items: stretch; } }
+
+/* Conversa de projeto fora da seleção: os fios que existem, num clique. */
+.conv-outros { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+
+/* Safari: letra maior (a classe vem do <head> do index.html). Ajustar o tamanho = mudar este número. */
+html.safari { zoom: 1.15; }
+/* Com o zoom, o Safari media a caixa de escrever mais larga que ela e desenhava uma barra de rolagem horizontal (26/10). Texto quebra linha: rolar de lado nunca serve. */
+html.safari textarea { overflow-x: hidden; }
+/* A caixa de escrever cresce sozinha (#225, autoAltura em web/js/base.js): o teto é do JS, em linhas inteiras — max-height aqui cortaria a linha ao meio. */
+textarea.cresce::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Central (26/10): o chat e, ao lado, as sessões abertas, as tarefas rodando e os PRs ── */
+.wrap.detail.central { display: grid; grid-template-columns: minmax(0, 1fr) 280px; column-gap: 24px; align-items: start; }
+.wrap.detail.central > .dtop, .wrap.detail.central > .timeline, .wrap.detail.central > .chatbox { grid-column: 1; }
+.central-lado { grid-column: 2; grid-row: 1 / span 4; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; font-size: 13px; min-width: 0; }
+/* #240: cada seção com respiro e um divisor sutil entre elas ("ficou tudo muito junto") */
+.central-lado > section { padding: 14px 0; min-width: 0; }
+.central-lado > section + section { border-top: 1px solid var(--line); }
+.central-lado h3 { margin: 0 0 10px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--dim); font-family: var(--mono); font-weight: 600; }
+/* Linha da coluna: nome à esquerda, estado/botão à direita, mesma altura em sessões e publicar */
+.cl-sessao { display: flex; align-items: center; gap: 8px; min-height: 32px; min-width: 0; }
+.cl-sessao b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-estado { margin-left: auto; flex: none; font-size: 11.5px; line-height: 1; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line2); color: var(--dim); }
+.cl-estado.ocupada { color: var(--amber); border-color: rgba(232,169,74,.5); }
+.cl-estado.parada { color: var(--green); border-color: rgba(79,207,127,.4); }
+.cl-bola { width: 8px; height: 8px; border-radius: 50%; background: var(--dim2); flex: none; }
+.cl-sessao.ocupada .cl-bola { background: var(--amber); }
+.cl-sessao.parada .cl-bola { background: var(--green); }
+.cl-vazio { color: var(--dim2); font-size: 12px; font-style: italic; }
+.cl-item { display: block; padding: 6px 0; color: var(--txt); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-item:hover { color: var(--green); }
+.central-nome { font-size: 15px; }
+.central-ouvindo { color: var(--cyan); border-color: var(--cyan); }
+.ev.sessao { border-left: 3px solid var(--cyan); padding-left: 12px; }
+.ev.sessao .k { color: var(--cyan); font-size: 11.5px; font-family: var(--mono); margin-bottom: 4px; }
+@media (max-width: 1100px) {
+  .wrap.detail.central { display: block; }
+  .central-lado { position: static; margin: 0 0 16px; }
+}
+/* Responder a uma resposta (26/10): o número R12 que o board dá, o ↩ responder e a citação, como no WhatsApp. */
+.ev.resultado .k .rnum { color: var(--txt); background: rgba(79,207,127,.16); border-radius: 6px; padding: 0 6px; }
+.ev.resultado .k .responder { margin-left: auto; background: none; border: 0; padding: 0; color: var(--dim); font: inherit; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.ev.resultado .k .responder:hover, .ev.resultado .k .responder:focus-visible { color: var(--green); }
+.ev.resultado.destaque { outline: 2px solid var(--green); outline-offset: 2px; }
+.citacao { display: block; border-left: 3px solid var(--green); background: rgba(79,207,127,.08); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; color: var(--dim); font-size: 12.5px; text-decoration: none; white-space: normal; overflow: hidden; text-overflow: ellipsis; }
+.citacao b { color: var(--green); margin-right: 4px; }
+a.citacao:hover { color: var(--txt); }
+.responder-a { display: flex; align-items: center; gap: 8px; }
+.responder-a[hidden] { display: none; }
+.responder-a .citacao { flex: 1; margin: 0; white-space: nowrap; }
+
+/* Central (#213): o pedido de SIM com o botão Aprovar, e o selo da aprovação na mensagem do dono. */
+.pedido-sim { margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(232,169,74,.5); border-radius: 10px; background: rgba(232,169,74,.08);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; line-height: 1.5; }
+.pedido-sim span { flex: 1; min-width: 200px; }
+.pedido-sim b { color: var(--amber); }
+.selo.aprovacao { color: var(--green); border-color: rgba(79,207,127,.45); }
+
+/* ⚡ "Não juntada — conflito" (26/10, a #200): aprovada, mas o trabalho ficou só na cópia. Estado próprio, em vermelho. */
+.pill.naojuntada { color: var(--red); border-color: rgba(239,107,107,.5); background: rgba(239,107,107,.1); }
+.task.naojuntada { border-color: rgba(239,107,107,.45); }
+.naojuntada-cab { color: var(--red); }
+.faixa-naojuntada, .aviso-naojuntada { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid rgba(239,107,107,.55); border-radius: 10px;
+  background: rgba(239,107,107,.09); font-size: 13px; line-height: 1.5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; cursor: default; }
+.faixa-naojuntada b, .aviso-naojuntada > b { color: var(--red); }
+.faixa-naojuntada a { color: var(--txt); text-decoration: underline; text-underline-offset: 3px; }
+.aviso-naojuntada .nj-arquivos, .aviso-naojuntada details, .aviso-naojuntada .nj-acoes { flex-basis: 100%; }
+.aviso-naojuntada .nj-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.aviso-naojuntada .btn { min-height: 32px; padding: 4px 12px; }
+.cl-naojuntada h3 { color: var(--red); }
+.aviso-conferir { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid rgba(232,184,92,.55); border-radius: 10px; }
+.aviso-conferir > b, .cl-conferir h3 { color: var(--amber); }
+.sobras { margin: 6px 0 10px; color: var(--dim); font-size: 13px; }
+.sobras summary { cursor: pointer; width: fit-content; }
+.sobras ul { margin: 6px 0 0; padding-left: 18px; max-height: min(30vh, 220px); overflow: auto; }
+.sobras li { margin: 4px 0; overflow-wrap: anywhere; }
+/* 🚀 depois do clique (#214): ⏳ enquanto roda, ✅ em dia/publicado no lugar do botão, "republicar" discreto, motivo da falha */
+.pub-acao { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.pub-feito { color: var(--green); font-weight: 600; }
+.pub-motivo { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pub-republicar { background: none; border: 0; padding: 0; color: var(--dim); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.pub-republicar:hover, .pub-republicar:focus-visible { color: var(--txt); }
+/* #240: na coluna da Central o botão nunca sai do cartão — nome e botão na 1ª linha, falha/✅ numa linha própria embaixo, quebrando o texto.
+   O .pub-acao some da caixa (display: contents) para os filhos dele entrarem na grade da linha. */
+.cl-pub { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 4px; min-height: 32px; padding: 4px 0; font-size: 13px; }
+.cl-pub + .cl-pub { margin-top: 4px; }
+.cl-pub > b { grid-column: 1; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-pub > .pub-acao { display: contents; }
+.cl-pub .pub-acao > button, .cl-pub .pub-acao > .pr-mudo { grid-column: 2; grid-row: 1; justify-self: end; max-width: 100%; }
+.cl-pub .pub-motivo, .cl-pub .pub-feito { grid-column: 1 / -1; grid-row: 2; max-width: none; white-space: normal; overflow: visible; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+
+/* ── 🖥 Sessões (#/sessoes, #233): o terminal cru de cada sessão do Claude no tmux, ao vivo, e as teclas ── */
+.ses-abas { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.ses-aba { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--txt); font: inherit; font-size: 13px; cursor: pointer; }
+.ses-aba.on { border-color: var(--cyan); box-shadow: inset 0 -2px 0 var(--cyan); }
+.ses-aba small { color: var(--dim); }
+.ses-aba .ses-fora { color: var(--amber); }
+.ses-anteriores { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: -4px 0 12px; }
+.ses-anteriores details { flex: 1 1 auto; }
+.ses-anteriores summary { cursor: pointer; color: var(--dim); font-size: 13px; padding: 6px 0; }
+.ses-ant-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ses-ant { height: 30px; opacity: .85; }
+.ses-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line2); }
+.ses-dot.on { background: var(--green, #b9ed80); }
+.ses-cab { font-size: 13px; margin-bottom: 6px; }
+.ses-term { margin: 0; height: 58vh; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #0c0f0e; color: #d7dad8; font: 12.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; tab-size: 8; }
+.ses-term:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.ses-erro { color: var(--red, #e5484d); }
+.ses-teclas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; align-items: center; }
+.ses-teclas .btn { min-width: 40px; }
+.ses-sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+.ses-enviar { display: flex; gap: 8px; align-items: center; }
+.ses-enviar input:not([type]) { flex: 1; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--txt); font: 13px ui-monospace, Menlo, monospace; }
+.ses-enter { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); white-space: nowrap; }
+.ses-dica { font-size: 12px; margin: 8px 0 0; }
+.ses-reabrir { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font-size: 13px; }
+.ses-nova { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; font-size: 13px; }
+.ses-nova select { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--txt); font: inherit; }
+.ses-manual { margin-top: 12px; }
+.ses-botoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.ses-trazidas { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; font-size: 13px; }
+.ses-manual summary { cursor: pointer; font-size: 12px; }
+/* Caminho de pasta só por motivo técnico (#249): recolhido, abre no clique — o slug da pasta não vai à tela. */
+.pasta-rec { display: inline-block; margin-left: 6px; font-size: 12px; color: var(--muted); vertical-align: baseline; }
+.pasta-rec summary { cursor: pointer; display: inline; }
+.pasta-rec[open] code { display: block; margin-top: 4px; word-break: break-all; }
+.ses-cmd { padding: 10px 12px; border-radius: 8px; background: #0c0f0e; color: #d7dad8; font: 12.5px ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+/* ── Navegador dos agentes (#/navegador, #217) ── */
+.nav-topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; font-size: 13px; }
+.nav-botoes { margin-left: auto; display: flex; gap: 8px; }
+.nav-estado { color: var(--dim); font-weight: 600; }
+.nav-estado.on { color: var(--green, #b9ed80); }
+.nav-estado.logar { color: var(--amber); }
+.nav-tela { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); position: relative; }
+.nav-barra { padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-tela img { display: block; width: 100%; height: auto; }
+.nav-tela img:not([src]) { display: none; }
+.nav-vazio { padding: 48px 12px; }
+.nav-sempre { margin: 12px 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.nav-titulo { margin: 20px 0 8px; font-size: 15px; }
+.nav-ev { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.nav-ev.falhou { background: color-mix(in srgb, var(--red, #e5484d) 6%, transparent); }
+.nav-hora, .nav-url { color: var(--dim); font-size: 12px; }
+.nav-quem { font-weight: 600; }
+.nav-risco { color: var(--amber); font-size: 12px; }
+.nav-recusado, .nav-erro { color: var(--red, #e5484d); font-weight: 600; }
+.nav-ok { color: var(--green, #b9ed80); }
+.nav-motivo { flex-basis: 100%; color: var(--dim); font-size: 12px; }
+
+/* Pedidos de permissão das sessões (#232): cartão acima da caixa de escrever, na conversa, na tarefa e na Central. */
+.perm-cartoes { display: flex; flex-direction: column; gap: 10px; margin: 0 0 10px; }
+.perm-cartao { border: 1px solid rgba(232,169,74,.55); background: rgba(232,169,74,.08); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.perm-cartao.barrado { border-color: rgba(239,107,107,.5); background: rgba(239,107,107,.07); }
+.perm-topo { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.perm-topo b { color: var(--amber); }
+.perm-cartao.barrado .perm-topo b { color: var(--red); }
+.perm-acao pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; font-size: 12.5px; }
+.perm-botoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.perm-botoes code { font-size: 11.5px; }
+.btn.perigo:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
+.perm-cab { color: var(--amber); font-weight: 700; font-size: 13px; text-decoration: none; border: 1px solid rgba(232,169,74,.5); border-radius: 999px; padding: 2px 10px; }
+.cl-permissao h3 { color: var(--amber); }
+
+/* 🎙 Modo voz da Central (#286) */
+.voz-botao.ligado { color: var(--accent, #b9ed80); border-color: var(--accent, #b9ed80); }
+/* #307: o painel do modo voz no menu lateral, preso no pé dele (o menu rola por dentro em tela baixa e o painel continua à vista).
+   O menu se redesenha só nos dois pedaços dele (.nav-pedaco); display: contents deixa marca, menu e rodapé como antes. */
+.nav-pedaco { display: contents; }
+/* O painel não tem caixa própria (display: contents): barra e faixa são itens do menu. Só a barra fica presa no pé do menu, para o
+   estado e os botões nunca saírem da vista em tela baixa; a faixa (ajustes, limites) rola com o menu e não cobre item nenhum. */
+.voz-painel { display: contents; font-size: 12px; color: var(--dim); }
+#vozBarra { margin: 18px -6px 0; margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line); background: #171b18; }
+#vozBarra:has(.voz-fora) { position: sticky; bottom: -20px; z-index: 1; padding-bottom: 10px; }
+#vozFaixa { padding: 2px 2px 4px; }
+.voz-painel + .nav-pedaco > .sidebar-bottom { margin-top: 0; padding-top: 14px; }
+/* Tela baixa (notebook): o menu aperta um pouco para caber o painel ligado sem rolar. */
+@media (min-width: 761px) and (max-height: 860px) {
+  .brand { padding-bottom: 20px; }
+  .nav-label { padding: 10px 12px 6px; }
+  .nav-item { padding: 8px 12px; margin: 1px 0; }
+}
+.voz-titulo { color: var(--dim2); text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: 1.7px; }
+.voz-faixa { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 0; font-size: 12px; color: var(--dim); min-width: 0; }
+.voz-faixa .voz-botao { width: 100%; justify-content: center; }
+.voz-faixa .hint { font-size: 11.5px; line-height: 1.45; }
+.voz-link { color: var(--cyan); font-size: 12px; }
+.voz-mais summary { cursor: pointer; color: var(--dim); font-weight: 600; font-size: 12px; }
+.voz-mais[open] summary { margin-bottom: 6px; }
+.voz-mais .voz-limites { max-height: 40vh; overflow-y: auto; }
+.voz-sim { color: var(--dim); }
+.voz-comando { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.voz-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.voz-linha + .voz-linha, .voz-limites, .voz-aviso:not(:empty) { margin-top: 6px; }
+.voz-ajustes { display: flex; flex-direction: column; gap: 8px; }
+.voz-ajustes label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.voz-ajustes input[type=range] { flex: 1 1 100%; width: 100%; accent-color: var(--accent, #b9ed80); }
+.voz-ajustes select { max-width: 100%; }
+.voz-jeito { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.voz-jeito label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.voz-jeito input[type=range] { flex: 1 1 100%; width: 100%; accent-color: var(--accent, #b9ed80); }
+.voz-jeito .btn { align-self: flex-start; }
+.voz-amostras { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.voz-amostras .btn { align-self: stretch; text-align: left; white-space: normal; height: auto; min-height: 32px; }
+.voz-estado { font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+.voz-estado[data-fase="gravando"] { color: var(--red, #eb6e6e); border-color: currentColor; }
+.voz-estado[data-fase="falando"] { color: var(--accent, #b9ed80); border-color: currentColor; }
+.voz-estado[data-fase="cortado"], .voz-estado[data-fase="toque"], .voz-estado[data-fase="ditado"] { color: var(--amber, #e8b347); border-color: currentColor; }
+.voz-nivel { width: 64px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: none; }
+.voz-nivel i { display: block; height: 100%; width: 0; background: var(--accent, #b9ed80); }
+.voz-dica { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; }
+.voz-aviso { color: var(--amber, #e8b347); }
+.voz-selo { color: var(--cyan, inherit); }
+/* #298: "Só a minha voz" */
+.voz-quem:not(:empty) { color: var(--amber, #e8b347); font-weight: 600; }
+.voz-cad { max-width: 760px; }
+.voz-cad h2 { margin: 0 0 10px; }
+.voz-cad h3 { margin: 22px 0 6px; font-size: 14px; }
+.voz-cad > p, .voz-cad-medidas { margin: 8px 0; }
+.voz-cad-texto { margin: 12px 0; padding: 12px 14px; border-left: 3px solid var(--accent, #b9ed80); background: var(--panel); border-radius: 8px; font-size: 16px; line-height: 1.6; }
+.voz-cad-grava { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.voz-cad-progresso { flex: 1 1 200px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.voz-cad-progresso i { display: block; height: 100%; width: 0; background: var(--red, #eb6e6e); }
+.voz-cad-teste { font-weight: 600; }
+.voz-cad-teste[data-passou="false"] { color: var(--amber, #e8b347); }
+
+/* `board tela` (#293): o pedido que esperou o dono parar de digitar, e o microfone aberto fora da Central. Em cima: embaixo fica a caixa de escrever. */
+.tela-guardada { position: fixed; top: calc(var(--voz-altura, 0px) + 12px); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); padding: 8px 12px; background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; box-shadow: var(--shadow-lg); font-size: 13px; }
+/* #307: a barra do modo voz (estado, medidor, ⏹ e Desligar) é o alto do painel do menu. No celular (abaixo) ela se prende no alto da tela,
+   como a da #296: lá o menu rola junto com a página. */
+.voz-fora { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.voz-fora .voz-estado { flex: 1 1 100%; }
+.voz-fora .voz-nivel { flex: 1 1 100%; width: auto; }
+.voz-fora .btn { flex: 1 1 auto; }
+.voz-fora .voz-quem { flex: 1 1 100%; }
+.voz-fora a.btn[hidden] { display: none; }
+.tela-guardada .btn, .voz-fora .btn { height: 30px; }
+.tela-guardada .btn { flex: none; }
+/* #302: o link que não abriu sozinho. Sem --voz-altura embaixo: o aviso nunca tampa a barra da voz. */
+.tela-link { flex-direction: column; align-items: stretch; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 100px); overflow-y: auto; }
+body:has(#telaGuardada) .tela-link { top: calc(var(--voz-altura, 0px) + 64px); }
+.tela-link-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.tela-link-item + .tela-link-item { padding-top: 10px; border-top: 1px solid var(--line2); }
+.tela-link-item span, .tela-link-item a, .tela-link-item small { flex: 1 1 100%; overflow-wrap: anywhere; }
+.tela-link-item small { color: var(--dim); }
+.voz-fora .btn[hidden] { display: none; }
+@media (max-width: 760px) {
+  .tela-guardada { left: 8px; right: 8px; transform: none; max-width: none; flex-wrap: wrap; }
+  .tela-guardada span { flex: 1 1 100%; }
+  body:has(#telaGuardada) .tela-link { top: calc(var(--voz-altura, 0px) + 140px); max-height: calc(100vh - 150px); }
+  /* #296/#307: no celular só a barra se prende no alto; a altura real vem do pintarVozFora, em --voz-altura, que abre espaço no começo
+     da tela e desce o cabeçalho preso. A faixa (ligar, ajustes, limites) fica no menu, no alto da página: nunca cobre a caixa de escrever. */
+  .voz-fora { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 60; gap: 6px 8px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; box-shadow: var(--shadow-lg); font-size: 13px; }
+  .voz-fora .voz-nivel { flex: 0 0 40px; margin-right: auto; }
+  .voz-fora .btn { flex: none; }
+  body.com-voz { padding-top: var(--voz-altura); }
+  body.com-voz .dtop { top: var(--voz-altura); }
+  body.com-voz .central-lado { top: var(--voz-altura); }
+  #vozBarra { margin: 0; padding: 0; border: 0; background: none; }
+  #vozBarra:has(.voz-fora) { position: static; padding: 0; }
+  #vozFaixa { display: flex; margin-top: 10px; padding: 10px 0 0; border-top: 1px solid var(--line); }
+  .voz-faixa { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .voz-faixa .voz-botao { width: auto; }
+  .voz-faixa .voz-titulo { display: none; }
+  .voz-faixa .voz-dica, .voz-faixa .voz-quem, .voz-faixa .voz-aviso, .voz-faixa .voz-sim, .voz-faixa .voz-mais { flex: 1 1 100%; }
+}
+
+/* 🖥 ver no tmux → Ghostty (#352) */
+.ses-gh { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: 10px; }
+.ses-gh kbd, .ses-dica kbd { font-family: var(--mono, monospace); font-size: 11px; padding: 1px 5px; border: 1px solid var(--line2); border-radius: 4px; }
+.cl-sessao .cl-gh { flex: none; min-height: 28px; height: 28px; padding: 0 8px; font-size: 12px; }
+.gh-lista { display: grid; gap: 8px; }
+.gh-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; }
+.gh-linha.on { border-color: var(--accent, #b9ed80); }
+.gh-linha .gh-cmd { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--dim); }
+
+/* A página da memória numa janela (04/11: a tela Memória saiu do menu; 📦, Busca e Controle abrem aqui) */
+.mem-dialogo { width: min(760px, 94vw); max-height: 86vh; padding: 0; border: 1px solid var(--line2); border-radius: 12px; background: var(--panel); color: var(--txt); }
+.mem-dialogo::backdrop { background: rgba(0,0,0,.55); }
+.mem-dialogo-corpo { position: relative; padding: 22px 24px; }
+.mem-dialogo h3 { margin: 4px 36px 8px 0; }
+.mem-fechar { position: absolute; top: 12px; right: 12px; }
+.mem-ligas { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mem-ligas b { font-size: 12px; color: var(--dim); margin-left: 6px; }
+.mem-ligas button { font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line2); background: transparent; color: var(--txt); cursor: pointer; }
+
+/* ══ Cockpit (#364, 04/11 — Proposta A da #360, escolhida pelo dono por voz) ══════════════════════════════════════════════
+   A tela é a da proposta (data/anexos/reforma-360/proposta-a-cockpit.*): barra de topo de 48 px (logo B, caixa de comando, o que
+   roda e o plano com barrinhas), TRILHO de ícones de 64 px à esquerda com o módulo de voz no pé, o trabalho no meio e, na Central,
+   o INSPETOR de 340 px à direita. Quadro em kanban, ficha com a esteira numa coluna de 320 px. No celular: topo de 52 px, barra de
+   baixo com os ícones e "⋯ Mais" (Buscar, Controle e o painel do modo voz). Camada por cima de tudo: a ordem é a cascata.
+   Contraste AA conferido no painel mais claro (--panel2 #171c23): texto, --dim, --dim2, --run e o botão verde ≥ 4,5:1. */
+:root {
+  --bg: #0a0c0f; --panel: #11151a; --panel2: #171c23; --line: #232a33; --line2: #33404d;
+  --txt: #e6ebf0; --dim: #96a1ae; --dim2: #8390a0;
+  --cyan: #3ddc84; --green: #3ddc84; --run: #4cc3ff; --amber: #ffb020; --red: #ff6b6b; --violet: #b18cff; --secondary: #b18cff;
+  --accent: #3ddc84; --shadow: 0 4px 16px #0006; --shadow-lg: 0 20px 60px #0009;
+  --sans: "Noto Sans", "DM Sans", system-ui, sans-serif;
+  --mono: "Noto Sans Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --topo: 48px; --trilho: 64px; --inspetor: 340px; --lado: 320px;
+}
+html, body { background: var(--bg); color: var(--txt); font: 13px/1.55 var(--sans); }
+h1, h2, h3, .page-intro h2 { font-family: var(--sans); }
+::selection { background: #3ddc8040; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+a { color: var(--run); }
+.page-intro { display: none; }                 /* a proposta não tem abertura: o trabalho ocupa a tela */
+.wrap, .wrap.detail, .detail { max-width: none; margin: 0; }
+.dot.on { background: var(--green); box-shadow: none; }
+
+/* ── componentes da proposta: chip, botão, cartão ── */
+.chip { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 20px; padding: 2px 9px; color: var(--dim); background: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; height: auto; }
+.chip b { font-weight: 600; color: inherit; opacity: .8; }
+.chip.on { border-color: var(--green); color: var(--green); background: none; }
+.chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--run); display: inline-block; }
+.btn { font: 600 12px var(--sans); border-radius: 7px; padding: 0 12px; height: 30px; border: 1px solid var(--line); background: var(--panel2); color: var(--txt); }
+.btn:hover:not(:disabled) { border-color: var(--line2); background: var(--panel2); }
+.btn.primary { background: var(--green); color: #03130a; border-color: var(--green); }
+.btn.primary:hover:not(:disabled) { background: #5be69a; box-shadow: none; }
+.ib { color: var(--dim); }
+.selo { font-family: var(--mono); font-size: 10.5px; }
+.pill { font: 600 10.5px var(--mono); border-radius: 20px; padding: 2px 9px; min-width: 0; }
+.pill.rodando { color: var(--run); border-color: var(--run); background: none; }
+.empty { background: var(--panel); border-color: var(--line); color: var(--dim); }
+.empty-icon { border-color: #3ddc8040; background: #3ddc8010; color: var(--green); }
+.md code, .md pre { background: var(--panel2); }
+
+/* ── a barra de topo ── */
+header.topo { display: flex; align-items: center; gap: 14px; margin: 0; padding: 0 14px 0 0; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: nowrap; min-height: 0; }
+.brand-logo { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #3ddc84, #4cc3ff); display: grid; place-items: center; color: #06110a; font: 900 15px var(--mono); flex: none; text-decoration: none; }
+.top-logo { margin: 0 14px; }
+.top-logo:hover { opacity: 1; }
+header.topo .back { font: 12px var(--mono); color: var(--dim); white-space: nowrap; }
+header.topo h1.cmd { flex: 0 1 520px; min-width: 160px; height: 32px; margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--dim); font: 400 12.5px var(--sans); letter-spacing: 0; cursor: text; overflow: hidden; white-space: nowrap; }
+h1.cmd .cmd-tela { color: var(--txt); font-weight: 600; }
+h1.cmd .cmd-resto { overflow: hidden; text-overflow: ellipsis; }
+h1.cmd .cmd-sep { color: var(--dim2); margin-right: 2px; }
+h1.cmd kbd { margin-left: auto; font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--dim); }
+header.topo .stats { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 12px var(--mono); color: var(--dim); white-space: nowrap; }
+header.topo .stats .dot { margin: 0; }
+.uso-cab { font: 12px var(--mono); color: var(--dim); background: none; border: 0; padding: 0; display: inline-block; white-space: nowrap; }
+.uso-cab > i { display: none; }
+.ubar { display: inline-block; width: 70px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 0 6px; vertical-align: middle; }
+.ubar s { display: inline-block; vertical-align: top; height: 100%; background: var(--green); text-decoration: none; }
+.ubar.atencao s { background: var(--amber); }
+.ubar.limite s { background: var(--red); }
+header.topo .cfg { margin-left: 0; display: inline-flex; align-items: center; gap: 6px; font: 11px var(--mono); color: var(--dim2); white-space: nowrap; }
+header.topo .cfg .dot { margin: 0; }
+.som-volume { width: 64px; }
+
+/* ── a nova tarefa (quadro): a caixa de comando do topo; abre para baixo com as opções ── */
+.composer { gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.composer-label { display: none; }
+.composer textarea { font-size: 13px; min-height: 0; }
+.composer .row { border-top: 1px solid var(--line); padding-top: 10px; gap: 8px; }
+.composer select { height: 32px; font-size: 12px; background: var(--panel2); border-color: var(--line); }
+.composer:focus-within { border-color: #2f7a52; box-shadow: var(--shadow-lg); }
+.composer .row, .composer .hint { display: none; }
+.composer:focus-within .row, .composer:has(textarea:not(:placeholder-shown)) .row, .composer:has(#anexosIncluir:not([hidden])) .row, .composer.arrastando .row { display: flex; }
+.composer:focus-within .hint, .composer:has(textarea:not(:placeholder-shown)) .hint { display: block; }
+
+/* ── o kanban ── */
+.qhead { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); flex-wrap: wrap; padding: 6px 0; }
+.qhead h2 { margin: 0 4px 0 0; font: 700 15px var(--sans); letter-spacing: 0; }
+.qhead .chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 0; }
+.qhead .chip b { display: none; }
+.qhead-dir { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.agentes-resumo { color: var(--txt); }
+.visao { display: inline-flex; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+.visao-btn { font: 11px var(--mono); padding: 2px 10px; color: var(--dim); }
+.visao-btn + .visao-btn { border-left: 1px solid var(--line); }
+.visao-btn.on { color: var(--green); }
+.kchips { display: none; }
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 14px 0; align-items: stretch; }
+.kcol { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 7px; min-width: 0; min-height: calc(100vh - var(--topo) - 90px); }
+.kcol h3 { margin: 0; font: 700 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; display: flex; justify-content: space-between; padding: 2px 4px 6px; border-bottom: 2px solid var(--c); color: var(--txt); }
+.kcol h3 b { font-weight: 700; }
+.kcards { display: flex; flex-direction: column; gap: 7px; }
+.kcard { position: relative; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 7px; padding: 8px 9px; }
+.kcard.alerta { --c: var(--red); }
+.kcard.feita { opacity: .7; }
+.kt { display: block; color: var(--txt); font-weight: 600; line-height: 1.35; margin-bottom: 6px; overflow-wrap: anywhere; }
+.kt:hover { color: #fff; opacity: 1; }
+.km { display: flex; flex-wrap: wrap; gap: 0 6px; font: 10.5px var(--mono); color: var(--dim); align-items: center; }
+.km > span + span:not(.ka)::before { content: "· "; color: var(--dim2); }
+.km .selo { font-size: 10px; }
+.km a { color: var(--dim); text-decoration: underline; }
+.ka { margin-left: auto; }
+.ka .ib { width: 22px; height: 22px; font-size: 11px; color: var(--dim); }
+.est { display: flex; gap: 3px; margin-top: 6px; }
+.est i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+.est i.ok { background: var(--green); } .est i.nao { background: var(--red); } .est i.run { background: var(--run); }
+.est-txt { margin-top: 4px; } .est-txt b { color: var(--run); }
+.kvazio, .kdica { color: var(--dim2); font: 11px var(--mono); margin: 4px; }
+.kdica { display: none; }
+.kmais { font: 11px var(--mono); color: var(--run); padding: 4px; text-align: left; }
+
+/* ── a Central: fio no meio, o INSPETOR à direita ── */
+.chead, .fhead { display: flex; flex-direction: column; gap: 0; padding: 0; background: var(--bg); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.chead .dh1 { display: flex; align-items: center; gap: 12px; min-height: 44px; flex-wrap: wrap; }
+.chead .dh1 select { height: 30px; min-width: 0; font-size: 12px; }
+.central-nome { font: 700 15px var(--sans); }
+.dh-dir { margin-left: auto; }
+.chead .hint { display: none; }
+.chead .hint:not(.chint) { display: block; font-size: 11.5px; color: var(--dim2); padding-bottom: 8px; }
+.ctabs { display: none; }
+.central-lado { background: var(--panel); border: 0; border-left: 1px solid var(--line); border-radius: 0; padding: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+.central-lado > section { padding: 0; border: 0 !important; }
+.central-lado h3 { font: 700 11px var(--mono); color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+.central-lado h3 span { color: var(--dim); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.cl-sessao, .cl-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; background: var(--panel2); margin-bottom: 4px; min-height: 0; color: var(--txt); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cl-item:hover { color: var(--txt); background: #1c232c; }
+.cl-sessao b { font-weight: 400; }
+.cl-estado { margin-left: auto; border: 0; padding: 0; font: 11px var(--mono); color: var(--dim); }
+.cl-estado.ocupada { color: var(--amber); } .cl-estado.parada { color: var(--dim); }
+.cl-m { margin-left: auto; font: 11px var(--mono); color: var(--dim); }
+.cl-bola { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; display: inline-block; }
+.cl-bola.run { background: var(--run); }
+.cl-sessao.parada .cl-bola { background: var(--green); } .cl-sessao.ocupada .cl-bola { background: var(--amber); }
+.cl-gh { height: 22px; padding: 0 6px; font-size: 11px; }
+.cl-naojuntada h3, .cl-conferir h3, .cl-permissao h3 { color: var(--amber); }
+.cl-naojuntada .cl-item, .cl-conferir .cl-item { border: 1px solid #5a4410; }
+.cl-pub { border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: var(--panel2); margin-bottom: 6px; }
+
+/* ── mensagens: rótulo à esquerda (você / R14 / agente / rev.), texto à direita, sem balão ── */
+.timeline { gap: 14px; padding: 18px 0 24px; margin: 0; }
+.ev.com-rot { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 10px; background: none; border: 0; border-radius: 0; padding: 0; max-width: none; margin: 0; box-shadow: none; }
+.ev.com-rot > * { grid-column: 2; }
+.ev.com-rot > .ev-rot { grid-column: 1; grid-row: 1; }
+.ev.com-rot > .at { grid-column: 1; grid-row: 2; font: 9.5px var(--mono); color: var(--dim2); text-align: center; margin: 3px 0 0; }
+.ev-rot { font: 700 11px var(--mono); color: var(--run); border: 1px solid #1d3d50; background: #0d1f2a; border-radius: 6px; height: 22px; display: grid; place-items: center; align-self: start; padding: 0 2px; }
+.ev.dono .ev-rot, .ev.sessao .ev-rot { color: var(--dim); border-color: var(--line); background: transparent; }
+.ev.rot-conf .ev-rot { color: var(--green); border-color: #1f4a33; background: #0c2016; }
+.ev.rot-conf.nao .ev-rot { color: var(--red); border-color: #5a2020; background: #200c0c; }
+.rnum { cursor: pointer; }
+.ev.com-rot .md, .ev.com-rot .txt { line-height: 1.55; color: #cdd5dd; font-size: 13px; }
+.ev.dono.com-rot { color: var(--txt); font-size: 13px; line-height: 1.55; align-self: stretch; margin-left: 0; max-width: none; text-align: left; justify-self: stretch; white-space: pre-wrap; }
+.ev.dono.com-rot > .k, .ev.dono.com-rot > .citacao { white-space: normal; }
+.ev.com-rot .k { font: 10.5px var(--mono); color: var(--dim2); display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 2px; }
+.ev.com-rot .k .rnum { display: none; }
+.ev.resultado.slim .k { margin: 0; }
+.ev.dono.com-rot .k { margin: 2px 0; }
+.ev.revisor.com-rot, .ev.portao, .ev.mark { background: none; border-color: var(--line); }
+.ev.sessao { border-left: 0; padding-left: 0; }
+.ev.resultado.destaque { outline: 1px solid var(--green); outline-offset: 4px; }
+.pedido-sim { margin-top: 8px; border: 1px solid #5a4410; background: #1d1606; border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.pedido-sim span { flex: 1 1 200px; }
+.pedido-sim b { font: 700 11px var(--mono); color: var(--amber); letter-spacing: 1px; margin-right: 8px; }
+.selo.aprovacao { color: var(--green); border-color: var(--green); border-radius: 20px; }
+.citacao { border-left-color: var(--green); background: #3ddc8010; }
+/* a caixa de escrever, presa embaixo, como na proposta */
+.chatbox { position: sticky; bottom: 0; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--bg); padding: 12px 0; box-shadow: none; align-items: flex-end; gap: 10px; }
+.chatbox > div:first-child { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 11px 14px; min-height: 44px; justify-content: center; }
+.chatbox textarea { font-size: 13px; }
+.chatbox .btn, .chatbox .ib { height: 44px; }
+.chatbox .ib { width: 44px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel2); }
+
+/* ── a ficha: cabeçalho de uma linha, esteira à esquerda, conversa à direita ── */
+.fhead { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-height: 44px; padding: 6px 0; }
+.fhead h2.t { margin: 0; font: 700 15px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46ch; display: block; -webkit-line-clamp: unset; cursor: default; letter-spacing: 0; line-height: 1.4; }
+.fhead .acts { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.fhead .acts .btn { height: 30px; }
+.fhead .passar { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--dim); }
+.ficha-lado { padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; min-width: 0; }
+.ficha-lado .rot, .pedido .rot { font: 600 11px var(--mono); color: var(--dim); letter-spacing: 2px; text-transform: uppercase; }
+.esteira { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.passo { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 8px 0; --c: var(--dim); }
+.passo.ok { --c: var(--green); } .passo.nao { --c: var(--red); } .passo.run { --c: var(--run); }
+.passo > i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 11px var(--mono); font-style: normal; border: 2px solid var(--c); color: var(--c); }
+.passo span { display: flex; flex-direction: column; min-width: 0; }
+.passo b { font-weight: 600; font-size: 13px; }
+.passo small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } /* o estado escrito, para leitor de tela e testes; à vista vai a descrição */
+.passo em { font: normal 11px var(--mono); color: var(--dim); overflow-wrap: anywhere; }
+.ficha-det { border-top: 1px solid var(--line); padding-top: 8px; }
+.ficha-det > summary { cursor: pointer; font: 600 11px var(--mono); color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+.ficha-det .m { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 11px var(--mono); color: var(--dim); margin-top: 8px; align-items: center; }
+.ficha-det .entrega-linha select { height: 30px; max-width: 100%; font-size: 12px; background: var(--panel2); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; }
+.pedido { margin-top: auto; border: 1px solid var(--line); border-radius: 9px; padding: 10px; background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
+.pedido-txt { font-size: 12px; line-height: 1.5; color: #cdd5dd; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.pedido-txt.aberto { -webkit-line-clamp: unset; }
+.pedido-m { font: 10.5px var(--mono); color: var(--dim); }
+.pedido .fotos { display: flex; flex-wrap: wrap; gap: 6px; }
+.pedido .fotos a { width: 72px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.pedido .fotos img { width: 100%; display: block; }
+
+/* ═══ computador: topo fixo, trilho, inspetor ═══ */
+@media (min-width: 761px) {
+  body { padding: var(--topo) 0 0 var(--trilho); }
+  #app { padding: 0 18px; }
+  header.topo { position: fixed; top: 0; left: 0; right: 0; height: var(--topo); z-index: 40; }
+  .dtop { position: sticky; top: var(--topo); z-index: 6; background: var(--bg); padding: 0; margin: 0; box-shadow: none; }
+  .qhead { position: sticky; top: var(--topo); z-index: 6; background: var(--bg); }
+  /* o trilho */
+  .sidebar { position: fixed; top: var(--topo); left: 0; bottom: 0; width: var(--trilho); padding: 10px 0 12px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 6px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; z-index: 30; }
+  .trilho { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .nav-item { position: relative; width: 44px; height: 44px; margin: 0; padding: 0; border-radius: 10px; display: grid; place-items: center; color: var(--dim); font-size: 13px; gap: 0; }
+  .nav-item svg { width: 18px; height: 18px; margin-top: -6px; }
+  .nav-rot { position: absolute; bottom: -1px; left: -6px; right: -6px; text-align: center; font: 9px var(--mono); color: var(--dim); white-space: nowrap; }
+  .nav-item:hover { background: var(--panel2); color: var(--txt); }
+  .nav-item.active { background: var(--panel2); color: var(--txt); box-shadow: inset 3px 0 var(--green); }
+  .nav-selo { position: absolute; top: 4px; right: 4px; background: var(--amber); color: #000; font: 700 9px var(--mono); border-radius: 8px; padding: 0 4px; line-height: 14px; }
+  .nav-mais, .mais-folha { display: none; }
+  /* o módulo de voz no pé do trilho: só o "🎙 ligar" (desligado) ou a barra compacta (ligado); o ⚙ abre o painel inteiro ao lado */
+  .voz-painel { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: auto; width: 56px; position: static; }
+  #vozBarra, #vozBarra:has(.voz-fora) { margin: 0; padding: 0; border: 0; background: none; position: static; width: 100%; }
+  .voz-fora { position: static; display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; padding: 8px 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); font: 9px var(--mono); text-align: center; box-shadow: none; }
+  .voz-fora .voz-estado { border: 0; padding: 0; background: none; font: 600 9px/1.25 var(--mono); color: var(--green); white-space: normal; overflow-wrap: anywhere; height: auto; }
+  .voz-fora .voz-nivel { width: 100%; height: 5px; }
+  .voz-fora .voz-quem { font-size: 9px; }
+  .voz-fora .btn { height: auto; min-height: 22px; padding: 3px 2px; font: 600 9px var(--mono); border-radius: 6px; white-space: normal; line-height: 1.15; }
+  .voz-abrir { width: 28px; height: 22px; border-radius: 6px; color: var(--dim); font-size: 13px; }
+  .voz-abrir:hover { color: var(--txt); background: var(--panel2); }
+  .voz-abrir { position: relative; }
+  /* aviso do modo voz (sem cancelamento de eco, microfone…) com o painel fechado: o ⚙ ganha um "!" âmbar */
+  .voz-painel:has(#vozAviso:not(:empty)) .voz-abrir::after { content: "!"; position: absolute; top: -4px; right: -2px; background: var(--amber); color: #000; font: 700 9px var(--mono); border-radius: 8px; padding: 0 4px; line-height: 13px; }
+  #vozFaixa { padding: 0; width: 100%; }
+  body:not(.mais-aberto) #vozFaixa > :not(.voz-botao) { display: none; }
+  body:not(.mais-aberto) #vozFaixa .voz-botao { width: 52px; height: auto; padding: 8px 0; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); font: 9px var(--mono); color: var(--dim); }
+  body:not(.mais-aberto) #vozFaixa .voz-botao .vb-ico { font-size: 16px; }
+  body:not(.mais-aberto) #vozFaixa .vb-txt { display: none; }
+  .vb-curto { display: none; }
+  body:not(.mais-aberto) #vozFaixa .vb-curto { display: block; }
+  /* o painel inteiro, ao lado do trilho */
+  body.mais-aberto #vozFaixa { position: fixed; left: calc(var(--trilho) + 8px); bottom: 12px; width: 320px; max-height: calc(100vh - var(--topo) - 24px); overflow-y: auto; padding: 14px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow-lg); z-index: 45; }
+  /* a Central: o inspetor preso à direita */
+  .wrap.detail.central, .wrap.detail:not(.ficha) { display: flex; flex-direction: column; align-items: stretch; min-height: calc(100vh - var(--topo)); }
+  .wrap.detail.central { margin-right: var(--inspetor); }
+  .wrap.detail:not(.ficha) > .timeline { flex: 1 0 auto; }
+  .central-lado { position: fixed; top: var(--topo); right: 0; bottom: 0; width: var(--inspetor); overflow-y: auto; z-index: 5; }
+  /* a ficha: esteira à esquerda */
+  .wrap.detail.ficha { display: grid; grid-template-columns: var(--lado) minmax(0, 1fr); padding: 0 18px 0 0; }
+  .wrap.detail.ficha > .dtop { grid-column: 1 / -1; padding-left: 18px; }
+  .wrap.detail.ficha { grid-template-rows: auto 1fr auto; min-height: calc(100vh - var(--topo)); }
+  .wrap.detail.ficha > .ficha-lado { grid-column: 1; grid-row: 2 / span 2; position: sticky; top: calc(var(--topo) + var(--dtop-h, 46px)); align-self: start; height: calc(100vh - var(--topo) - var(--dtop-h, 46px)); overflow-y: auto; border-right: 1px solid var(--line); }
+  .wrap.detail.ficha > .timeline, .wrap.detail.ficha > .chatbox, .wrap.detail.ficha > .perm-cartoes, .wrap.detail.ficha > #permCartoes { grid-column: 2; padding-left: 18px; }
+  .wrap.detail.ficha > .chatbox { margin-left: 18px; padding-left: 0; }
+  .ficha-det > summary { display: none; }
+  /* a nova tarefa do quadro mora na caixa de comando do topo */
+  .composer { position: fixed; top: 8px; left: calc(var(--trilho) + 14px); width: min(520px, calc(100vw - 760px)); min-width: 220px; z-index: 41; padding: 0 10px; min-height: 32px; justify-content: center; }
+  .composer::before { content: "⌕"; position: absolute; left: 10px; top: 7px; color: var(--dim); font-size: 13px; }
+  .composer textarea { padding: 6px 0 6px 18px; }
+  .composer:focus-within, .composer:has(textarea:not(:placeholder-shown)), .composer:has(#anexosIncluir:not([hidden])), .composer.arrastando { width: min(680px, calc(100vw - 120px)); padding: 6px 12px 10px; }
+  header.topo:has(~ .composer:not([hidden])) h1.cmd { opacity: 0; } /* a caixa de nova tarefa está por cima; o título continua no texto da página */
+}
+@media (min-width: 761px) and (max-width: 1500px) { header.topo .cfg-txt { display: none; } }
+@media (min-width: 761px) and (max-width: 1280px) { header.topo .stats { display: none; } .ubar { width: 44px; } :root { --inspetor: 300px; --lado: 280px; } .kanban { grid-template-columns: repeat(5, minmax(190px, 1fr)); overflow-x: auto; } }
+@media (min-width: 761px) and (max-width: 1100px) { header.topo .uso-cab { font-size: 11px; } .ubar { display: none; } }
+
+/* ═══ celular: topo de 52 px, barra de baixo, uma coluna do kanban por vez, o inspetor como aba ═══ */
+@media (max-width: 760px) {
+  :root { --topo-cel: 52px; --nav-cel: 58px; }
+  body { padding: var(--topo-cel) 0 calc(var(--nav-cel) + 8px); }
+  body.com-voz { padding-top: var(--voz-altura); }
+  #app { padding: 0 12px; }
+  header.topo { position: fixed; top: 0; left: 0; right: 0; height: var(--topo-cel); z-index: 40; gap: 10px; padding: 0 12px 0 0; }
+  .top-logo { width: 30px; height: 30px; margin: 0 0 0 14px; }
+  header.topo .back { display: none; }
+  header.topo h1.cmd { flex: 1 1 auto; border: 0; background: none; padding: 0; height: auto; min-width: 0; font: 700 15px var(--sans); color: var(--txt); }
+  h1.cmd .cmd-ico, h1.cmd .cmd-resto, h1.cmd kbd { display: none; }
+  header.topo .stats, header.topo .cfg-txt, header.topo .som-volume, .ubar { display: none; }
+  .uso-cab { font-size: 10.5px; margin-left: auto; }
+  header.topo .cfg { gap: 2px; }
+  header.topo .cfg .ib { width: 22px; height: 22px; }
+  .dtop { position: static; padding: 0; }
+  /* a barra de baixo */
+  .sidebar { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; height: var(--nav-cel); margin: 0; padding: 0; border: 0; border-top: 1px solid var(--line); background: var(--panel); display: block; z-index: 40; overflow: visible; }
+  .trilho, .sidebar nav.trilho { display: flex; justify-content: space-around; align-items: center; height: 100%; overflow: visible; gap: 0; }
+  .nav-item, .nav-mais { position: relative; width: 52px; height: 48px; margin: 0; padding: 0 0 12px; display: grid; place-items: center; border-radius: 10px; color: var(--dim); font-size: 18px; background: none; box-shadow: none; }
+  .nav-item svg { width: 20px; height: 20px; }
+  .nav-rot { position: absolute; bottom: 2px; left: 0; right: 0; text-align: center; font: 9px var(--mono); color: inherit; }
+  .nav-item.active { color: var(--txt); background: none; box-shadow: none; }
+  .nav-item[data-k="busca"], .nav-item[data-k="controle"] { display: none; }
+  .nav-selo { position: absolute; top: 2px; right: 6px; background: var(--amber); color: #000; font: 700 9px var(--mono); border-radius: 8px; padding: 0 4px; line-height: 14px; }
+  .nav-mais[aria-expanded="true"] { color: var(--txt); }
+  .voz-abrir { display: none; }
+  .voz-painel { display: contents; }
+  #vozBarra, #vozBarra:has(.voz-fora) { margin: 0; padding: 0; border: 0; background: none; position: static; }
+  /* a barra do modo voz presa logo abaixo do topo (nunca em cima da caixa de escrever) */
+  .voz-fora { position: fixed; top: calc(var(--topo-cel) + 6px); left: 8px; right: 8px; z-index: 39; border-radius: 12px; background: var(--panel2); font: 11px var(--mono); }
+  .voz-fora .voz-estado { color: var(--green); border: 0; background: none; font: 600 11px var(--mono); flex: 1 1 auto; }
+  /* "⋯ Mais": Buscar, Controle e o painel do modo voz, numa folha sobre a barra de baixo */
+  .mais-folha { display: none; }
+  body.mais-aberto .mais-folha { display: flex; gap: 8px; position: fixed; left: 8px; right: 8px; bottom: calc(var(--nav-cel) + 8px); z-index: 45; padding: 10px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow-lg); }
+  body.mais-aberto .mais-folha .btn { flex: 1; height: 40px; }
+  #vozFaixa { display: none; margin: 0; border: 0; }
+  body.mais-aberto #vozFaixa { display: flex; flex-direction: column; flex-wrap: nowrap; position: fixed; left: 8px; right: 8px; bottom: calc(var(--nav-cel) + 74px); max-height: 55vh; overflow-y: auto; z-index: 45; padding: 12px; background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow-lg); }
+  body.mais-aberto #vozFaixa .voz-botao { width: 100%; }
+  .vb-curto { display: none; }
+  /* a caixa de escrever e a nova tarefa ficam logo acima da barra de baixo */
+  .chatbox { bottom: var(--nav-cel); padding: 10px 0; }
+  .chatbox .btn, .chatbox .ib { height: 42px; }
+  .chatbox > div:first-child { min-height: 42px; padding: 9px 12px; }
+  .composer { position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-cel) + 10px); z-index: 38; padding: 4px 12px; border: 1px dashed var(--line); border-radius: 12px; }
+  .composer::before { content: "＋"; position: absolute; left: 12px; top: 10px; color: var(--dim); }
+  .composer textarea { padding: 8px 0 8px 20px; font-size: 16px; }
+  .composer:focus-within, .composer:has(textarea:not(:placeholder-shown)) { border-style: solid; padding: 8px 12px 10px; max-height: calc(100vh - 140px); overflow-y: auto; }
+  .composer .row { display: none; }
+  .composer:focus-within .row, .composer:has(textarea:not(:placeholder-shown)) .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:has(.composer:not([hidden])) { padding-bottom: calc(var(--nav-cel) + 72px); }
+  /* o quadro no celular: as abas de estado e uma coluna por vez */
+  .qhead { gap: 8px; }
+  .qhead h2 { display: none; }
+  .qhead .chips { flex-wrap: nowrap; overflow-x: auto; }
+  .qhead-dir { margin-left: 0; }
+  .kchips { display: flex; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .kanban { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding: 12px 0; margin: 0; scrollbar-width: none; }
+  .kcol { flex: 0 0 100%; scroll-snap-align: start; background: none; border: 0; padding: 0; min-height: 0; }
+  .kcol h3 { display: none; }
+  .kdica { display: block; }
+  /* a Central no celular: Conversa | Inspetor */
+  .ctabs { display: flex; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .central-lado { display: none; border: 0; padding: 12px 0; background: none; }
+  body.ver-inspetor .central-lado { display: flex; }
+  body.ver-inspetor .wrap.central > .timeline, body.ver-inspetor .wrap.central > .chatbox { display: none; }
+  /* a ficha no celular: a esteira vira a barra de 5 riscos com os nomes embaixo */
+  .fhead { padding: 10px 0; }
+  .fhead h2.t { white-space: normal; max-width: none; flex: 1 1 100%; order: -1; font-size: 16px; }
+  .fhead .acts { margin: 4px 0 0; justify-content: stretch; flex: 1 1 100%; }
+  .fhead .acts .btn { flex: 1 1 auto; }
+  .ficha-lado { padding: 10px 0; }
+  .ficha-lado > .rot { display: none; }
+  .esteira { flex-direction: row; gap: 4px; }
+  .passo { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 0; }
+  .passo > i { width: 100%; height: 6px; border-radius: 3px; border: 0; background: var(--c); font-size: 0; }
+  .passo:not(.ok):not(.nao):not(.run) > i { background: var(--line); }
+  .passo b { font: 10px var(--mono); color: var(--dim); }
+  .passo.run b { color: var(--run); }
+  .passo em { display: none; }
+  .pedido { margin-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ── Cockpit, parte 2 (#364): as outras telas na mesma linguagem — cabeçalho de painel, o trabalho no meio, o inspetor à direita ── */
+.mhead { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); flex-wrap: wrap; padding: 6px 0; margin-bottom: 14px; }
+.mhead h2 { margin: 0 4px 0 0; font: 700 15px var(--sans); letter-spacing: 0; }
+.mhead-dir { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* o inspetor de cada tela: o mesmo painel da Central */
+.inspetor { background: var(--panel); border-left: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 12px; min-width: 0; }
+.inspetor:empty { display: none; }
+.inspetor h3 { font: 700 11px var(--mono); color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+.inspetor h3 span { color: var(--dim); letter-spacing: 0; text-transform: none; }
+.inspetor section { display: flex; flex-direction: column; }
+.cl-item.on { box-shadow: inset 3px 0 var(--green); }
+.cl-bola.err { background: var(--red); }
+.cl-vazio { color: var(--dim2); font: 11px var(--mono); font-style: normal; }
+/* Conversa de projeto */
+.wrap.conversa .chead .dh1 select { height: 30px; padding: 0 28px 0 10px; font-size: 12px; line-height: 28px; }
+/* Buscar: a caixa de busca como a caixa de comando, os resultados como cartões */
+.wrap.busca .bhead { background: none; border: 0; padding: 0; margin: 0 0 14px; }
+.wrap.busca .bhead .search-box input, .wrap.busca .bhead input#buscaIn { height: 40px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-size: 13.5px; }
+.wrap.busca .bhead select { height: 40px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--txt); }
+.wrap.busca .bhead .hint { font: 11px var(--mono); color: var(--dim); margin-top: 6px; }
+.bres { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--run); border-radius: 7px; padding: 10px 12px; margin-bottom: 7px; }
+.bres:hover { border-color: var(--line2); border-left-color: var(--run); background: #1c232c; }
+.bres .title { font-weight: 600; }
+.bres .meta { font: 10.5px var(--mono); color: var(--dim); }
+.bcount { font: 11px var(--mono); color: var(--dim); padding: 0 0 8px; }
+.busca-mem { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px; margin-bottom: 12px; }
+.bhist { margin: 0; border: 0; padding: 0; }
+.bhist h3 { font: 700 11px var(--mono); color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 6px; }
+.bh { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-radius: 7px; background: var(--panel2); margin-bottom: 4px; cursor: pointer; }
+.bh .q { font-size: 12px; color: var(--txt); }
+.bh .s { font: 10.5px var(--mono); color: var(--dim); }
+/* Sessões: o terminal no meio e a lista no inspetor */
+.ses-grade { display: grid; grid-template-columns: minmax(0, 1fr) var(--inspetor); gap: 0; align-items: start; }
+.ses-main { min-width: 0; padding-right: 16px; }
+.ses-lado { position: sticky; top: calc(var(--topo) + 52px); max-height: calc(100vh - var(--topo) - 60px); overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+.ses-lado .ses-abas { display: flex; flex-direction: column; gap: 4px; border: 0; padding: 0; margin: 0; overflow: visible; }
+.ses-lado .ses-aba { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 8px; border-radius: 7px; background: var(--panel2); border: 1px solid transparent; flex-wrap: wrap; }
+.ses-lado .ses-aba.on { border-color: var(--line2); box-shadow: inset 3px 0 var(--green); }
+.ses-lado .ses-aba small { font: 10.5px var(--mono); color: var(--dim); }
+.ses-lado .ses-nova { display: flex; flex-direction: column; align-items: stretch; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; margin: 0; }
+.ses-lado .ses-nova select, .ses-lado .ses-nova .btn { width: 100%; height: 32px; }
+.ses-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 0 8px; }
+.ses-term { background: #05070a; border: 1px solid var(--line); border-radius: 10px; }
+/* Pull Requests: um painel por projeto, em grade */
+#prsLista { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; align-items: start; }
+#prsLista > :not(.pr-projeto) { grid-column: 1 / -1; }
+.pr-projeto { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 0; min-width: 0; }
+.pr-projeto h2, .pr-projeto h3 { font: 700 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--txt); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--violet); }
+.pr-projeto .empty { padding: 14px; font-size: 12px; }
+.pr { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+/* Controle: os números como blocos do inspetor, as linhas de backup como cartões */
+.ctl-tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.ctl-linha { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; }
+@media (min-width: 761px) {
+  .wrap.com-inspetor { margin-right: var(--inspetor); }
+  .wrap.com-inspetor > .inspetor { position: fixed; top: var(--topo); right: 0; bottom: 0; width: var(--inspetor); overflow-y: auto; z-index: 5; }
+  .wrap.com-inspetor > .inspetor:empty { display: flex; }
+  .wrap.sessoes.com-inspetor { margin-right: 0; }
+  .mhead { position: sticky; top: var(--topo); z-index: 6; background: var(--bg); }
+}
+@media (max-width: 760px) {
+  .inspetor { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0; }
+  .ses-grade { grid-template-columns: minmax(0, 1fr); }
+  .ses-main { padding: 0; }
+  .ses-lado { position: static; max-height: none; order: -1; margin: 0 0 12px; }
+  #prsLista { grid-template-columns: minmax(0, 1fr); }
+  .mhead .chip { display: none; }
+}
+.wrap.busca .bhead .search-box { flex: 1; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); height: 40px; display: flex; align-items: center; padding: 0 10px; box-shadow: none; }
+.wrap.busca .bhead .search-box:focus-within { border-color: #2f7a52; }
+.wrap.busca .bhead .search-box input#buscaIn { border: 0; background: none; height: 38px; padding: 0; outline: 0; }
+/* Controle no cockpit: cada bloco é um painel como a coluna do kanban, título curto em mono, números nos blocos */
+.controle .network-panel { background: var(--panel) !important; border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; box-shadow: none; background-image: none !important; }
+.controle .network-heading { padding: 0 0 8px; margin: 0 0 10px; border-bottom: 2px solid var(--green); display: flex; align-items: flex-end; gap: 12px; background: none; }
+.controle .network-heading .eyebrow { font: 700 11px var(--mono); letter-spacing: 1px; color: var(--txt); }
+.controle .network-heading h2 { font: 400 12px var(--sans); color: var(--dim); margin: 2px 0 0; letter-spacing: 0; }
+.controle .ctl-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; border: 0; }
+.controle .ctl-tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 10px; }
+.controle .ctl-tile b { font: 700 18px var(--sans); }
+.controle .ctl-alertas li { background: var(--panel2); border-radius: 7px; }
+.controle .network-footer { font: 10.5px var(--mono); color: var(--dim); background: none; border-top: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .controle .ctl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wrap.conversa > #convLado { display: none; } /* no celular o seletor de projeto do cabeçalho troca de conversa; o inspetor tomaria a tela */
+}
+@media (max-width: 760px) { .mhead { display: none; } } /* no celular o nome da tela já está no topo */
+
+/* ── Letra maior (#364, pedido do dono: "aumentar a fonte") ──────────────────────────────────────────────────────────────
+   A base passa a ser o rem: 16 px no corpo (o A−/A+ do topo troca a letra do <html>, por aparelho: 13 a 22 px) e os textos
+   do Cockpit em proporção dela. Larguras dos painéis (trilho, inspetor, coluna da ficha) continuam fixas: o texto quebra linha. */
+html { font-size: 16px; }
+:root { --topo: max(48px, 3rem); }
+html, body { font-size: 1rem; line-height: 1.55; }
+header.topo h1.cmd { font-size: .9375rem; height: 2.125rem; }
+header.topo .stats, .uso-cab, header.topo .cfg { font-size: .8125rem; }
+.fonte-ctl { display: inline-flex; gap: 2px; }
+.fonte-ctl .ib { width: auto; height: 1.5rem; padding: 0 5px; font: 700 .75rem var(--sans); color: var(--dim); border: 1px solid var(--line); border-radius: 6px; }
+.fonte-ctl .ib:hover { color: var(--txt); }
+.chip { font-size: .8125rem; }
+.btn { font-size: .875rem; height: auto; min-height: 2rem; padding: .25rem .8rem; }
+.mhead h2, .qhead h2, .central-nome, .fhead h2.t { font-size: 1.25rem; }
+/* o trilho */
+.nav-rot { font-size: .6875rem; }
+/* kanban */
+.kcol h3 { font-size: .8125rem; }
+.kt { font-size: 1rem; }
+.km { font-size: .8125rem; }
+/* mensagens (Central, conversa, ficha) */
+.ev.com-rot { grid-template-columns: 3.25rem minmax(0, 1fr); }
+.ev-rot { font-size: .75rem; height: 1.5rem; }
+.ev.com-rot .md, .ev.com-rot .txt, .ev.dono.com-rot, .md { font-size: 1rem; line-height: 1.6; }
+.ev.com-rot .k, .ev.com-rot > .at { font-size: .75rem; }
+.ev.ferramenta, .ev.mark { font-size: .8125rem; }
+.pedido-sim { font-size: .9375rem; }
+.pedido-sim b { font-size: .75rem; }
+.chatbox textarea, .composer textarea { font-size: 1rem; }
+/* inspetor e coluna da Central */
+.central-lado, .inspetor { font-size: .875rem; }
+.central-lado h3, .inspetor h3, .bhist h3 { font-size: .75rem; }
+.cl-sessao, .cl-item { font-size: .875rem; }
+.cl-estado, .cl-m { font-size: .75rem; }
+/* ficha */
+.ficha-lado { font-size: .875rem; }
+.ficha-lado .rot, .pedido .rot, .ficha-det > summary { font-size: .75rem; }
+.passo b { font-size: .9375rem; }
+.passo em, .ficha-det .m, .pedido-m { font-size: .75rem; }
+.pedido-txt { font-size: .875rem; }
+/* busca, PRs, Controle, lista */
+.bres .title { font-size: 1rem; }
+.bres .meta, .bcount, .bh .s { font-size: .75rem; }
+.bh .q { font-size: .875rem; }
+.pr-projeto h2, .pr-projeto h3 { font-size: .75rem; }
+.pr { font-size: .875rem; }
+.controle .network-heading .eyebrow { font-size: .75rem; }
+.controle .network-heading h2 { font-size: .875rem; }
+.controle .ctl-tile b { font-size: 1.25rem; }
+.task .title { font-size: 1rem; }
+.task .meta { font-size: .75rem; }
+.toast { font-size: .9375rem; }
+.voz-faixa, .voz-faixa .hint { font-size: .8125rem; }
+@media (min-width: 761px) {
+  .nav-item { height: 3rem; width: 3rem; }
+  .nav-item svg { width: 1.25rem; height: 1.25rem; }
+}
+@media (max-width: 760px) {
+  header.topo h1.cmd { font-size: 1.0625rem; }
+  .uso-cab { font-size: .6875rem; }
+  .nav-rot { font-size: .625rem; }
+}
+.cl-vazio, .inspetor .cl-vazio { font-size: .8125rem; }
+@media (max-width: 760px) {
+  /* com a letra maior, a caixa de escrever ganha a linha inteira e os botões vão embaixo, à direita */
+  .chatbox { flex-wrap: wrap; justify-content: flex-end; }
+  .chatbox > div:first-child { flex: 1 1 100% !important; } /* o div tem flex:1 inline */
+  .chatbox .btn, .chatbox .ib { height: 38px; }
+  .chatbox .ib { width: 38px; }
+}

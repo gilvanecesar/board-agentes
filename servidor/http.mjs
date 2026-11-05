@@ -1,23 +1,37 @@
 // O servidor HTTP: as rotas da tela e da CLI, o SSE e a busca de tarefas.
 import { createServer } from "http";
 import { createHash } from "crypto";
-import { execFile, execFileSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { buscar, indexar, estadoBusca } from "../busca.mjs";
 import { ANEXOS, C, MODEL, MOTOR_PADRAO, MOTOR_QA, MOTOR_REVISOR, PARALLEL, PAUSE_FLAG, PERMISSION, PER_PROJECT, QA_LIGADO, QA_MODEL, RETRY_MAX, REVIEW_MODEL, REVIEW_ROUNDS, REVISOR_LIGADO, ROOT, STARTED_AT, WEB, cut, filaPausada, now } from "./config.mjs";
 import { broadcast, clients, logEvent, logPath, readLog, running, save, state, taskById, titleOf } from "./estado.mjs";
-import { listProjects, projectOf } from "./projetos.mjs";
-import { INFRA, atualizarCofreObsidian, envMemoria, execP, lerInfra } from "./infra.mjs";
+import { criarProjetoNovo, listProjects, projectOf, projetosVisiveis, rotuloDoProjeto, rotularTexto, rotulosDosProjetos } from "./projetos.mjs";
+import { tentarJuntarDeNovo } from "./juntar.mjs";
+import { listarPrs, mesclarPr } from "./prs.mjs";
+import { listarPublicar, logIdPublicar, projetosPublicaveis, publicar, statusPublicar } from "./publicar.mjs";
+import { INFRA, atualizarCofreObsidian, escreverNaMemoria, execP, lerInfra } from "./infra.mjs";
 import { apagarDaMemoria, caminhoNoProjeto, gravarInventario, gravarMentes, inventariar, lerInventario, lerMentes, mentePorProjeto, mentesDef, giroDaMemoria, montarGrafo, montarRomaneio, pistasDaMente, resumoMentes, semAcentoServidor, sentidoDoPedido, tiraCabecalhos } from "./memoria.mjs";
 import { CONTROLE, lerControle } from "./controle.mjs";
 import { MOTORES, catalogoModelos, motoresDisponiveis, temBin } from "./motores.mjs";
 import { chatTask, deployCommand, gateCommand } from "./esteira.mjs";
-import { conversaDe, conversaId, falarNaConversa, matarVivo } from "./conversa.mjs";
+import { conversaDe, conversaId, falarNaConversa, matarVivo, naVez, respostaNumero } from "./conversa.mjs";
+import { CENTRAL, listarSessoes, NOME_CENTRAL, TETO_ESPONTANEOS } from "./central.mjs";
+import { conferirAprovacao, refereDe, registrarAprovacao } from "./aprovacoes.mjs";
+import { TRANSCRICOES } from "./ditado.mjs";
 import { pedirReinicio, restartPending, stopTask } from "./fila.mjs";
-import { createTasks, removeTask, reorder, updateTask } from "./tarefas.mjs";
+import { createTasks, removeTask, reorder, resolverProjeto, updateTask } from "./tarefas.mjs";
 import { lerUsos, passarBastao, usage } from "./uso.mjs";
 import { ID_ANEXO, TIPOS_ANEXO, anexosValidos, lerBinario, salvarAnexo } from "./anexos.mjs";
+import { transcrever } from "./ditado.mjs";
+import { rotaNavegador } from "./navegador.mjs";
+import { listarSessoesTerminal, rotaSessoes } from "./sessoes.mjs";
+import { rotaAgentesTmux } from "./agentes-tmux.mjs";
+import { rotaGhostty } from "./ghostty.mjs";
+import { rotaVoz } from "./voz.mjs";
+import { ligarTela, rotaTela } from "./tela.mjs";
+import { daTela } from "./origem.mjs";
+import { abandonarPedido, historico, lerRegras, listarPendentes, pedirPermissao, responderPermissao, tirarRegra } from "./permissoes.mjs";
 
 // ── busca semântica (a aba 🔎 Buscar) ─────────────────────────────────────────
 /**
@@ -50,7 +64,8 @@ export async function buscarTarefas(consulta, { projeto = null, limite = 20 } = 
   return r;
 }
 
-export const json = (res, code, body) => { res.writeHead(code, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(body)); };
+// #249: erro vira toast na tela — o nome do projeto sai pelo rótulo, nunca pelo slug da pasta ("acme" → "CRM").
+export const json = (res, code, body) => { if (code >= 400 && body && typeof body.error === "string") body = { ...body, error: rotularTexto(body.error) }; res.writeHead(code, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(body)); };
 export const readBody = (req) => new Promise((ok, bad) => {
   let b = ""; req.on("data", (d) => { b += d; if (b.length > 1e6) bad(new Error("corpo grande demais")); });
   req.on("end", () => { try { ok(b ? JSON.parse(b) : {}); } catch { bad(new Error("JSON inválido")); } });
@@ -68,7 +83,8 @@ export const magro = (t) => {
 };
 export const publicState = (completo = false) => ({
   tasks: state.tasks.map((t) => (completo ? { ...t } : magro(t))),
-  projects: listProjects().map(({ slug, label }) => ({ slug, label })),
+  projects: projetosVisiveis().map(({ slug, label }) => ({ slug, label })), // a SELEÇÃO da tela (data/projetos.json)
+  rotulos: rotulosDosProjetos(), // #249: o nome de TODO projeto na tela (o slug da pasta nunca aparece)
   config: { parallel: PARALLEL, perProject: PER_PROJECT, model: MODEL || "(padrão do CLI)", permission: PERMISSION,
     motor: MOTOR_PADRAO, motorRevisor: MOTOR_REVISOR, motorQa: MOTOR_QA,
     revisor: REVIEW_MODEL, revisorLigado: REVISOR_LIGADO, qa: QA_MODEL, qaLigado: QA_LIGADO, rodadas: REVIEW_ROUNDS, reinicioPendente: restartPending, iniciadoEm: STARTED_AT, filaPausada: filaPausada(),
@@ -76,9 +92,10 @@ export const publicState = (completo = false) => ({
   motores: motoresDisponiveis(),
   // Só o cabeçalho de cada fio (o histórico vem por /api/conversa/<slug>), pra não engordar o SSE.
   conversas: Object.fromEntries(Object.entries(state.conversas || {}).map(([slug, c]) => [slug,
-    { busy: !!c.busy, motor: c.motor || null, modelo: c.modelo || null, temSessao: !!c.sessionId, custo: c.custo || 0, updatedAt: c.updatedAt }])),
+    { busy: !!c.busy, ouvindo: !!c.ouvindo, naVez: c.busy ? c.naVez || 0 : 0, motor: c.motor || null, modelo: c.modelo || null, temSessao: !!c.sessionId, custo: c.custo || 0, updatedAt: c.updatedAt }])),
   portoes: Object.fromEntries(listProjects().map((p) => [p.slug, gateCommand(p)])),
   deploys: Object.fromEntries(listProjects().map((p) => [p.slug, deployCommand(p)])),
+  publicaveis: projetosPublicaveis(), // 🚀 Publicar (data/publicar.json): só com o clique do dono
 });
 
 export const server = createServer(async (req, res) => {
@@ -114,12 +131,70 @@ export const server = createServer(async (req, res) => {
       return res.end(corpo);
     }
     if (req.method === "GET" && path === "/api/state") return json(res, 200, publicState(url.searchParams.has("tudo")));
+    // O navegador dos agentes (#217): abrir, ler, clicar, preencher, subir arquivo… com aprovação por ação de risco.
+    if (path === "/api/navegador" || path.startsWith("/api/navegador/")) return rotaNavegador(req, res, url, { json, readBody });
+    // 🖥 Sessões (#233): o terminal de cada sessão do Claude que roda no tmux — ver ao vivo e mandar teclas, só localhost.
+    if (path === "/api/sessoes" || path.startsWith("/api/sessoes/")) return rotaSessoes(req, res, url, { json, readBody });
+    if ((path === "/api/tela" || path.startsWith("/api/tela/")) && await rotaTela(req, res, url, { json, readBody })) return; // `board tela` (#293)
+    // O 🖥 "ver no tmux": Terminal no Mac, a sessão board-agentes na tela numa máquina sem tela (#248).
+    if (path === "/api/agentes/tmux" || path.startsWith("/api/agentes/tmux/")) return rotaAgentesTmux(req, res, url, { json });
+    // 🖥 ver no tmux → Ghostty (#352): a sessão do tmux numa janela do Ghostty do Mac, pelo clique do dono.
+    if (path === "/api/ghostty" || path.startsWith("/api/ghostty/")) return rotaGhostty(req, res, url, { json, readBody });
+    if (path.startsWith("/api/voz/")) return await rotaVoz(req, res, url, { json, readBody }); // 🎙 modo voz da Central (#286)
+    // Pedidos de permissão das sessões (#232): a ferramenta do CLI pede e ESPERA; só a tela responde.
+    if (req.method === "POST" && path === "/api/permissoes/pedido") {
+      const b = await readBody(req);
+      const p = pedirPermissao(b);
+      // A ferramenta caiu (o agente parou, o processo morreu): o cartão não pode ficar esperando um clique que não leva a nada.
+      if (p.id) res.on("close", () => { if (!res.writableEnded) abandonarPedido(p.id, "a sessão que pediu não está mais esperando (parou ou caiu)"); });
+      return json(res, 200, await p);
+    }
+    if (req.method === "GET" && path === "/api/permissoes") return json(res, 200, { pendentes: listarPendentes(), regras: lerRegras().regras, historico: historico(Number(url.searchParams.get("n")) || 50) });
+    const perm = path.match(/^\/api\/permissoes\/([0-9a-f]{12}|regras)$/);
+    if (perm && req.method === "POST") {
+      // Mesma barreira do 🚀: só o navegador na própria tela manda o Origin do board. Agente com curl não se autoaprova.
+      if (!daTela(req)) return json(res, 403, { error: "permissão só se responde pelo clique do dono na tela do board" });
+      const b = await readBody(req);
+      if (perm[1] === "regras") { tirarRegra(String(b.slug || ""), String(b.regra || "")); broadcast("permissao", {}); return json(res, 200, { regras: lerRegras().regras }); }
+      const quem = process.env.BOARD_DONO ? `${process.env.BOARD_DONO} (clique na tela)` : "o dono (clique na tela)";
+      try { return json(res, 200, { cartao: responderPermissao(perm[1], String(b.acao || ""), quem) }); }
+      catch (e) { if (e.status) return json(res, e.status, { error: e.message }); throw e; }
+    }
     if (req.method === "GET" && path === "/api/usage") return json(res, 200, usage());
-    if (req.method === "POST" && path === "/api/agentes/tmux") {
-      // O botão "🖥 tmux": monta a sessão com uma aba por agente e abre o Terminal nela.
-      const env = { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ""}` };
-      execFile(process.execPath, [join(ROOT, "board-cli.mjs"), "agentes", "--abrir"], { env, timeout: 30000 }, () => {});
-      return json(res, 202, { ok: true });
+    // Pull Requests (menu 🔀): os abertos de cada projeto da seleção e o "Mesclar" que o dono clica.
+    if (req.method === "GET" && path === "/api/prs") return json(res, 200, await listarPrs({ fresco: url.searchParams.has("fresco") }));
+    if (req.method === "POST" && path === "/api/prs/mesclar") {
+      const b = await readBody(req);
+      try { return json(res, 200, await mesclarPr({ url: String(b.url || ""), forcar: b.forcar === true })); }
+      catch (e) { if (e.status) return json(res, e.status, { error: e.message, precisaConfirmar: !!e.precisaConfirmar }); throw e; }
+    }
+    // 🚀 Publicar por projeto (data/publicar.json): versão no ar × main e o botão que SÓ o dono clica.
+    if (req.method === "GET" && path === "/api/publicar") return json(res, 200, await listarPublicar({ fresco: url.searchParams.has("fresco") }));
+    const pub = path.match(/^\/api\/publicar\/([\w.-]+)(?:\/(log))?$/);
+    if (pub) {
+      const [, slug, sub] = pub;
+      if (req.method === "GET" && sub === "log") return json(res, 200, { events: readLog(logIdPublicar(slug)) });
+      if (req.method === "GET" && !sub) { const st = await statusPublicar(slug, { fresco: url.searchParams.has("fresco") }); return st ? json(res, 200, st) : json(res, 404, { error: "projeto não existe" }); }
+      if (req.method === "POST" && !sub) {
+        // Barreira contra chamada sem querer (CLI, agente com curl): só o navegador na própria tela manda o Origin do board.
+        // Não é cofre — quem quiser fingir o cabeçalho consegue —, por isso o comando também tem de vir confirmado.
+        if (!daTela(req)) return json(res, 403, { error: "publicar só pelo clique do dono na tela do board" });
+        const b = await readBody(req);
+        try { return json(res, 202, await publicar(slug, { confirmo: b.confirmo, quem: process.env.BOARD_DONO ? `${process.env.BOARD_DONO} (clique na tela)` : "o dono (clique na tela)" })); }
+        catch (e) { if (e.status) return json(res, e.status, { error: e.message }); throw e; }
+      }
+    }
+    // Projeto novo pela tela: cria a pasta em DEV (CLAUDE.md + git) e já entra na seleção.
+    if (req.method === "POST" && path === "/api/projetos") {
+      const b = await readBody(req);
+      try {
+        const p = criarProjetoNovo({ nome: b.nome, descricao: b.descricao });
+        broadcast("state");
+        return json(res, 201, { projeto: { slug: p.slug, label: p.label }, aviso: p.aviso });
+      } catch (e) {
+        if (e.status) return json(res, e.status, { error: e.message });
+        throw e;
+      }
     }
     if (req.method === "GET" && path === "/api/modelos") return json(res, 200, catalogoModelos());
     if (req.method === "GET" && path === "/api/claude-uso") return json(res, 200, await lerUsos({ fresco: url.searchParams.has("fresco") }));
@@ -222,9 +297,7 @@ export const server = createServer(async (req, res) => {
         if (acao === "aplicar") {
           const prop = inv.juntar[String(b.id || "")]; if (!prop || !prop.texto) return json(res, 400, { error: "não há versão única para aplicar" });
           const g = montarGrafo(); const alvo = g._porChave.get(prop.chaves[0]); if (!alvo) return json(res, 404, { error: "a 1ª página sumiu" });
-          execFileSync("ai-memory", ["write-page", "--workspace", "default", "--project", alvo.projeto, "--path", caminhoNoProjeto(alvo),
-            "--tier", "semantic", "--kind", "Note", "--body", prop.texto],
-            { env: { ...process.env, ...envMemoria(), PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` }, timeout: 30000, stdio: "pipe" });
+          escreverNaMemoria("write-page", { projeto: alvo.projeto, caminho: caminhoNoProjeto(alvo), texto: prop.texto });
           for (const k of prop.chaves.slice(1)) apagarDaMemoria(k);
           delete inv.juntar[String(b.id)]; inv.feitos.push({ em: now(), acao: "juntadas", chaves: prop.chaves, em1: prop.chaves[0] });
           inv.repetidas = inv.repetidas.filter((r) => !r.chaves.includes(prop.chaves[0]));
@@ -285,6 +358,7 @@ export const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write("event: hello\ndata: {}\n\n");
       clients.add(res);
+      ligarTela(url.searchParams.get("tela"), res, req); // #293: cada aba se identifica; `board tela` fala só com a que está em uso
       const ping = setInterval(() => { try { res.write(": ping\n\n"); } catch { /* caiu */ } }, 20000);
       req.on("close", () => { clients.delete(res); clearInterval(ping); });
       return;
@@ -294,6 +368,15 @@ export const server = createServer(async (req, res) => {
       if (!buf.length) return json(res, 400, { error: "arquivo vazio" });
       return json(res, 201, { anexo: (({ id, nome, mime, bytes }) => ({ id, nome, mime, bytes }))(salvarAnexo(buf, url.searchParams.get("nome"))) });
     }
+    if (req.method === "POST" && path === "/api/transcrever-audio") {
+      const buf = await lerBinario(req, 25 * 1024 * 1024);
+      if (!buf.length) return json(res, 400, { error: "áudio vazio" });
+      try {
+        return json(res, 200, { texto: await transcrever(buf) });
+      } catch (e) {
+        return json(res, 500, { error: "não consegui transcrever: " + cut(String(e.stderr || e.message), 200) });
+      }
+    }
     const img = path.startsWith("/api/anexos/") && path.slice(12).match(ID_ANEXO);
     if (req.method === "GET" && img) {
       const arq = join(ANEXOS, img[0]);
@@ -302,24 +385,38 @@ export const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": mime, "x-content-type-options": "nosniff", "cache-control": "public, max-age=31536000, immutable" });
       return res.end(readFileSync(arq));
     }
+    // ── a Central: as sessões do Claude abertas na máquina (a coluna da tela) ──
+    if (req.method === "GET" && path === "/api/central/sessoes") {
+      // #352: cada sessão no tmux leva o 🖥 tmux (Ghostty) (o painel vem do terminal das Sessões, pelo pid).
+      const noTmux = new Map(); try { for (const s of (await listarSessoesTerminal()).sessoes) if (s.ghostty) noTmux.set(s.pid, s.ghostty); } catch { /* sem tmux */ }
+      return json(res, 200, { nome: NOME_CENTRAL, teto: TETO_ESPONTANEOS, sessoes: listarSessoes().map((s) => (noTmux.has(s.pid) ? { ...s, ghostty: noTmux.get(s.pid) } : s)) });
+    }
+    // Conferir uma aprovação da Central (`board aprovacao <id> "<pedido>"`). SÓ leitura: não existe rota que grave.
+    const ap = path.match(/^\/api\/aprovacoes\/([^/]+)$/);
+    if (ap && req.method === "GET") {
+      const r = conferirAprovacao(decodeURIComponent(ap[1]), url.searchParams.get("acao") || "", { projetos: [...listProjects(), ...projetosVisiveis()].filter((p) => p.slug !== "DEV") });
+      return json(res, 200, r);
+    }
     // ── conversa por projeto ──
     const mc = path.match(/^\/api\/conversa\/([\w.-]+)(?:\/(limpar|parar))?$/);
     if (mc) {
       const slug = mc[1], acao = mc[2], c = conversaDe(slug), id = conversaId(slug);
       if (req.method === "GET" && !acao) {
-        return json(res, 200, { slug, busy: !!c.busy, motor: c.motor, modelo: c.modelo, custo: c.custo || 0, events: readLog(id) });
+        return json(res, 200, { slug, busy: !!c.busy, naVez: c.busy ? c.naVez || 0 : 0, motor: c.motor, modelo: c.modelo, custo: c.custo || 0, events: readLog(id) });
       }
       if (req.method === "POST" && acao === "parar") {
+        // Com resposta no meio, o fim do turno solta a vez: as mensagens que esperam seguem logo depois.
         const cp = running.get(id);
         if (cp) cp.kill("SIGTERM");
-        c.busy = false; save(); broadcast("state");
+        else { c.busy = false; save(); broadcast("state"); }
         return json(res, 200, { ok: true });
       }
       if (req.method === "POST" && acao === "limpar") {
         // Fio novo: o histórico na tela some junto, senão a tela mostraria o que o agente não lembra.
         if (c.busy) return json(res, 409, { error: "espere a resposta terminar" });
         matarVivo(slug); // o processo vivo lembraria do fio velho
-        c.sessionId = null; c.custo = 0; c.updatedAt = now();
+        naVez.delete(slug); c.naVez = 0;
+        c.sessionId = null; c.sessoes = {}; c.custo = 0; c.updatedAt = now();
         try { unlinkSync(logPath(id)); } catch { /* nunca houve conversa */ }
         save(); broadcast("state"); broadcast("conversa-limpa", { slug });
         return json(res, 200, { ok: true });
@@ -328,9 +425,15 @@ export const server = createServer(async (req, res) => {
         const b = await readBody(req);
         const texto = String(b.texto || "").trim();
         if (!texto) return json(res, 400, { error: "escreva alguma coisa" });
-        falarNaConversa(slug, texto, { anexos: b.anexos, motor: b.motor, modelo: b.modelo })
+        // Responder a uma resposta: o número tem de existir NESTE fio (🧹 novo fio recomeça a contagem).
+        const cita = b.cita == null ? null : respostaNumero(slug, Number(b.cita));
+        if (b.cita != null && !cita) return json(res, 400, { error: `não achei a resposta R${String(b.cita).slice(0, 12)} nesta conversa` });
+        // Central (#213): o que o dono digita NA TELA (Origin da própria tela, como o 🚀) vira aprovação conferível pelas
+        // outras sessões. CLI, curl de agente e turno de outra sessão não passam por aqui com Origin: não ganham id.
+        const aprovacao = slug === CENTRAL && daTela(req) ? registrarAprovacao({ texto, refere: refereDe(readLog(id), cita) }).id : null;
+        falarNaConversa(slug, texto, { anexos: b.anexos, motor: b.motor, modelo: b.modelo, cita, aprovacao })
           .catch((e) => { logEvent(id, { t: "solto", texto: "⚠ " + e.message }); const cc = conversaDe(slug); cc.busy = false; save(); broadcast("state"); });
-        return json(res, 202, { ok: true }); // a resposta chega pelo SSE, como na tarefa
+        return json(res, 202, { ok: true, ...(aprovacao ? { aprovacao } : {}) }); // a resposta chega pelo SSE, como na tarefa
       }
     }
 
@@ -348,7 +451,7 @@ export const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && path === "/api/reiniciar") {
       pedirReinicio(); broadcast("state");
-      const ocupado = state.tasks.some((t) => t.status === "rodando" || t.busy);
+      const ocupado = state.tasks.some((t) => t.status === "rodando" || t.busy) || TRANSCRICOES.size > 0;
       return json(res, 202, { ok: true, agora: !ocupado, aviso: ocupado ? "vai reiniciar assim que nada estiver rodando" : "reiniciando agora" });
     }
     if (req.method === "POST" && path === "/api/tasks/reorder") {
@@ -356,7 +459,7 @@ export const server = createServer(async (req, res) => {
       if (!Array.isArray(b.ids)) return json(res, 400, { error: "ids" });
       reorder(b.ids); return json(res, 200, { ok: true });
     }
-    const m = path.match(/^\/api\/tasks\/(\d+)(?:\/(log|chat|stop|pr|publicar|passar))?$/);
+    const m = path.match(/^\/api\/tasks\/(\d+)(?:\/(log|chat|stop|pr|publicar|passar|projeto|juntar))?$/);
     if (m) {
       const task = taskById(m[1]);
       if (!task) return json(res, 404, { error: "tarefa não existe" });
@@ -375,17 +478,28 @@ export const server = createServer(async (req, res) => {
         passarBastao(task, novo);
         return json(res, 202, { ok: true, motor: novo });
       }
+      // O aviso "parece ser de outro projeto": o dono move ou confirma (e só então a tarefa anda na fila).
+      if (req.method === "POST" && sub === "projeto") {
+        const b = await readBody(req);
+        try { resolverProjeto(task, b.acao); return json(res, 200, { task }); }
+        catch (e) { if (e.status) return json(res, e.status, { error: e.message }); throw e; }
+      }
+      // ⚡ "não juntada — conflito": o dono resolveu na pasta (ou quer tentar outra vez) e manda juntar de novo.
+      if (req.method === "POST" && sub === "juntar") {
+        try { tentarJuntarDeNovo(task); return json(res, 202, { task }); }
+        catch (e) { if (e.status) return json(res, e.status, { error: e.message }); throw e; }
+      }
       if (req.method === "POST" && (sub === "pr" || sub === "publicar")) {
         if (task.busy || task.status === "rodando") return json(res, 409, { error: "a tarefa está ocupada — espere terminar" });
         if (!task.sessionId) return json(res, 400, { error: "esta tarefa nunca rodou — não há trabalho para entregar" });
         if (sub === "publicar" && !deployCommand(projectOf(task)))
-          return json(res, 400, { error: `o projeto "${task.project}" não tem comando de publicação declarado em data/deploy.json` });
+          return json(res, 400, { error: `o projeto "${rotuloDoProjeto(task.project)}" não tem comando de publicação declarado em data/deploy.json` });
         // ⚠️ Pela FILA, nunca direto: chamar prTask aqui pulava o "um agente por projeto", e 20
         // cliques em Virar PR viraram 20 agentes na mesma pasta, a caminho de criar
         // branch e commitar ao mesmo tempo na mesma árvore (16/09, parado a tempo).
         // E um PR por projeto de cada vez: a pasta é uma só, o primeiro PR leva TODAS as mudanças.
         const outro = state.tasks.find((t) => t.id !== task.id && t.project === task.project && (t.acao || (t.etapa === "entrega")));
-        if (outro) return json(res, 409, { error: `já tem um PR sendo montado para ${task.project} (#${outro.id}). A pasta é uma só: esse PR leva todas as mudanças que estão nela. Espere ele terminar.` });
+        if (outro) return json(res, 409, { error: `já tem um PR sendo montado para ${rotuloDoProjeto(task.project)} (#${outro.id}). A pasta é uma só: esse PR leva todas as mudanças que estão nela. Espere ele terminar.` });
         task.acao = sub === "publicar" ? "deploy" : "pr";
         task.status = "fila"; task.retentativa = null; task.updatedAt = now();
         logEvent(task.id, { t: "retentativa", estado: "na-fila", texto: task.acao === "deploy" ? "na fila para entregar, mesclar e publicar" : "na fila para virar PR" });

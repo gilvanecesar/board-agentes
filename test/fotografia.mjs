@@ -13,21 +13,20 @@ const AQUI = dirname(fileURLToPath(import.meta.url));
 
 export const TELAS = [
   // [nome, localStorage, hash, ação extra na página]
+  ["kanban", { visao: "kanban" }, ""],
   ["ativas", { tab: "ativas" }, ""],
   ["ativas-filtro", { tab: "ativas", filtro: "loja-online" }, ""],
   ["pendentes", { tab: "pendentes" }, ""],
   ["executadas", { tab: "executadas" }, ""],
   ["concluidas", { tab: "concluidas" }, ""],
-  ["consumo", { tab: "consumo" }, ""],
-  ["status", { tab: "monitoring" }, ""],
   ["controle", { tab: "controle" }, ""],
-  ["memoria-grafo", { tab: "memoria", memoriaModo: "grafo" }, ""],
-  ["memoria-galpao", { tab: "memoria", memoriaModo: "galpao" }, ""],
   ["tarefa-executada", {}, "#/t/12"],
   ["tarefa-erro", {}, "#/t/14"],
   ["tarefa-pendente", {}, "#/t/3"],
   ["conversa", {}, "#/c/loja-online"],
   ["busca", {}, "#/busca"],
+  ["prs", {}, "#/prs"],
+  ["central", {}, "#/central"],
   ["busca-resultado", {}, "#/busca", `(() => { const i = document.querySelector("#buscaIn"); i.value = "pix webhook"; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); })()`],
 ];
 const ROTAS = ["/api/state", "/api/state?tudo=1", "/api/usage", "/api/tasks/12", "/api/tasks/12/log", "/api/tasks/14", "/api/conversa/loja-online",

@@ -5,7 +5,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { criarCaixa, criarProjeto, subirBoard, limparCaixa, esperar } from "./ajuda.mjs";
+import { criarCaixa, criarProjeto, subirBoard, limparCaixa, esperar, chamadas } from "./ajuda.mjs";
 import { abrirNavegador, CHROME } from "./navegador.mjs";
 
 let atual = [];
@@ -137,25 +137,14 @@ test("mover de mente: mente inválida é recusada; mover tira a aprovação até
   assert.equal((await b.api("GET", "/api/romaneio/previa?projeto=demo&texto=deploy")).json.vazio, true, "sem aprovação, sem romaneio");
 });
 
-test("tela do inventário: descartar pede confirmação; juntar mostra a versão única ANTES de aplicar", { skip: !CHROME && "sem Chrome" }, async () => {
-  const { caixa, b } = await preparar({ cenario: { juntar: "# Token da memória\n\nVersão **única** proposta." } });
-  const nav = await abrirNavegador(); atual[atual.length - 1].push(nav);
-  await post(b, "rodar");
-  await nav.carregar(b.url + "/?a=1");
-  await nav.avaliar(`localStorage.setItem("board.tab", JSON.stringify("memoria")); localStorage.setItem("board.memoriaModo", JSON.stringify("galpao"))`);
-  await nav.carregar(b.url + "/?b=1"); await nav.quieto({ min: 600 });
-  const ate = async (expr) => { for (let i = 0; i < 80; i++) { if (await nav.avaliar(expr)) return; await esperar(150); } throw new Error("não chegou: " + expr); };
-  await ate(`!!document.querySelector('[data-inv-quase="demo/sessao-velha"]')`);
-  await ate(`(() => { const b = document.querySelector('[data-inv-quase="demo/sessao-velha"]'); if (!b) return false; b.click(); return true; })()`);
-  await ate(`!!document.querySelector('[data-inv-descartar="demo/sessao-velha"]')`);
-  assert.deepEqual(memLog(caixa), [], "o 1º clique só pede confirmação");
-  await ate(`(() => { const b = document.querySelector('[data-inv-descartar="demo/sessao-velha"]'); if (!b) return false; b.click(); return true; })()`);
-  for (let i = 0; i < 50 && !memLog(caixa).length; i++) await esperar(100);
-  assert.equal(memLog(caixa)[0]?.[0], "delete-page", "o 2º clique apaga");
-  await ate(`!!document.querySelector('[data-inv-juntar]')`);
-  await ate(`(() => { const b = document.querySelector('[data-inv-juntar]'); if (!b) return false; b.click(); return true; })()`);
-  await ate(`!!document.querySelector('[data-inv-aplicar]')`);
-  assert.ok(await nav.avaliar(`[...document.querySelectorAll(".inv-prev strong")].some((e) => e.textContent === "única")`), "a proposta aparece, em markdown");
-  assert.equal(memLog(caixa).length, 1, "ver a proposta não aplica nada");
-  assert.deepEqual(nav.erros, []);
+// A tela do inventário (Galpão) saiu com a tela Memória em 04/11: as rotas seguem testadas acima.
+
+test("núcleo do dono chega também à Conversa (não só às tarefas) — só o núcleo, não o romaneio", async () => {
+  const { caixa, b } = await preparar({ cenario: { conversa: ["oi"] } });
+  await b.api("POST", "/api/conversa/demo", { texto: "oi" });
+  for (let i = 0; i < 60 && !chamadas(caixa).some((c) => c.papel === "conversa"); i++) await esperar(150);
+  const c = chamadas(caixa).find((x) => x.papel === "conversa");
+  const regras = c.args[c.args.indexOf("--append-system-prompt") + 1];
+  assert.match(regras, /Regras do dono[\s\S]*\*\*Respostas curtas\*\*: o dono quer respostas curtas/);
+  assert.doesNotMatch(regras, /Token da memória/, "só o núcleo, não o romaneio inteiro");
 });

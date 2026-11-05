@@ -1,10 +1,9 @@
 // A memória como galpão: grafo, mentes, romaneio (o picking de cada tarefa) e o inventário da madrugada.
-import { execFileSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync } from "fs";
 import { join, relative } from "path";
-import { COM_ROTINAS, DATA, ESPELHO_MEMORIA, cut, now } from "./config.mjs";
+import { COM_ROTINAS, DATA, ESPELHO_MEMORIA, SERVIDOR_LOCAL, cut, now } from "./config.mjs";
 import { logEvent, state } from "./estado.mjs";
-import { envMemoria } from "./infra.mjs";
+import { escreverNaMemoria } from "./infra.mjs";
 import { configBusca, indexarMemoria, vetoresDaMemoria, vetorDoPedido, parecenca } from "../busca.mjs";
 
 // TEMAS cortam os projetos: a memória de um projeto pode morar quase toda no _global (veio da memória portátil,
@@ -129,7 +128,7 @@ export function montarRomaneio(task, { todasMentes = false, ate = null, sentido 
     "## Romaneio — memórias separadas pelo board para esta tarefa",
     "Use como contexto (vêm da memória compartilhada). Se precisar de mais, consulte o ai-memory. Se alguma estiver desatualizada, diga no resumo.",
     "", "### 🧭 O Dono (vale sempre)",
-    ...dono.map((x) => `- **${x.p.titulo}**: ${cut(x.p.descricao || tiraCabecalhos(x.p.bruto), 220)}`),
+    ...dono.map((x) => linhaDoDono(x.p)),
     ...(daTarefa.length ? ["", `### Da tarefa — mentes: ${[...mentes].map((id) => nomeM[id]).join(", ")}`] : []),
     ...daTarefa.map((x) => `\n#### ${x.p.titulo} (${nomeM[x.mente]} · ${x.p.projeto})\n${x.p.descricao ? x.p.descricao + "\n" : ""}${cut(tiraCabecalhos(x.p.bruto).replace(/^#.*$/m, ""), 700)}`),
   ].join("\n");
@@ -139,6 +138,16 @@ export function montarRomaneio(task, { todasMentes = false, ate = null, sentido 
     itens: [...dono, ...daTarefa].map((x) => ({ chave: x.chave, titulo: x.p.titulo, mente: x.mente, nota: Number(x.nota.toFixed(2)),
       ...(temSentido && x.sim != null ? { sentido: Number(x.sim.toFixed(3)) } : {}) })),
   };
+}
+
+const linhaDoDono = (p) => `- **${p.titulo}**: ${cut(p.descricao || tiraCabecalhos(p.bruto), 220)}`;
+// O núcleo do dono fora das tarefas (a Conversa): as mesmas regras aprovadas, na ordem dele. "" sem endereçamento aprovado.
+export function nucleoDoDono() {
+  const m = lerMentes(); if (!m || m.status !== "aprovada") return "";
+  const g = montarGrafo(); if (!g._porChave) return "";
+  const pags = (m.nucleoDono || []).map((k) => g._porChave.get(k)).filter(Boolean);
+  if (!pags.length) return "";
+  return ["## 🧭 Regras do dono (aprovadas por ele, da memória compartilhada; valem nesta conversa)", ...pags.map(linhaDoDono)].join("\n");
 }
 
 // O índice de sentido fica pronto sem esperar a 1ª tarefa: ao subir e a cada 10 min (só o que mudou é recalculado).
@@ -240,7 +249,7 @@ export function inventariar() {
   for (let i = 0; i < doc.length; i++) for (let j = i + 1; j < doc.length; j++) {
     const a = doc[i], b = doc[j]; const c = cos(a, b);
     const comum = [...a.tit].filter((w) => b.tit.has(w)).length, jac = comum / (Math.min(a.tit.size, b.tit.size) || 1);
-    // título parecido só conta com um mínimo de texto em comum (≥ 0,15): senão "Saturno" no título juntava assuntos sem nada a ver
+    // título parecido só conta com um mínimo de texto em comum (≥ 0,15): senão "Atena" no título juntava assuntos sem nada a ver
     const titulo = a.mente && a.mente === b.mente && comum >= 2 && jac >= 0.6 && c >= 0.15;
     if (c >= 0.5 || titulo) pares.push({ a: a.p.chave, b: b.p.chave, texto: Number(c.toFixed(2)), titulo });
   }
@@ -273,8 +282,7 @@ export function apagarDaMemoria(chave) {
   const g = montarGrafo(); const p = g._porChave && g._porChave.get(chave); if (!p) throw new Error("memória não encontrada: " + chave);
   const guarda = join(DATA, "inventario-descartadas"); mkdirSync(guarda, { recursive: true });
   writeFileSync(join(guarda, chave.replace(/[^\w.-]+/g, "_") + ".md"), p.bruto); // cópia local para desfazer à mão, além do backup noturno
-  execFileSync("ai-memory", ["delete-page", "--workspace", "default", "--project", p.projeto, "--path", caminhoNoProjeto(p)],
-    { env: { ...process.env, ...envMemoria(), PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:${process.env.PATH || ""}` }, timeout: 30000, stdio: "pipe" });
+  escreverNaMemoria("delete-page", { projeto: p.projeto, caminho: caminhoNoProjeto(p) });
   const m = lerMentes(); if (m && m.mapa[chave]) { delete m.mapa[chave]; gravarMentes(m); }
 }
 
@@ -290,7 +298,7 @@ export function tipoDaMemoria(caminho, bruto) {
 
 export function montarGrafo() {
   if (grafoCache.dado && Date.now() - grafoCache.em < 60000) return grafoCache.dado;
-  if (!existsSync(ESPELHO_MEMORIA)) return { erro: "o espelho da memória ainda não existe (rode memoria-obsidian)", nos: [], ligacoes: [] };
+  if (!existsSync(ESPELHO_MEMORIA)) return { erro: "o espelho da memória ainda não existe (rode " + (SERVIDOR_LOCAL ? "memoria-espelho" : "memoria-obsidian") + ")", nos: [], ligacoes: [] };
   const paginas = [];
   const anda = (dir, projeto) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {

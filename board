@@ -7,22 +7,88 @@
 #   board add "..." proj  inclui tarefa   (--fila para já rodar, --pr para entregar por PR)
 #   board show 42 · run 42 · stop 42 · say 42 "..." · done 42 · rm 42
 #   board pausar · retomar · reiniciar
+#   board servico ligar  sobe sozinho no login do macOS (LaunchAgent) · desligar · (sem nada: estado)
+#   board log            acompanha o log do serviço
 #
 # Qualquer outro argumento é repassado ao board-cli.mjs.
 DIR="${BOARD_DIR:-$HOME/Documents/DEV/board}"
 PORTA="${BOARD_PORT:-4488}"
+ROTULO="com.board.servidor"
+PLIST="$HOME/Library/LaunchAgents/$ROTULO.plist"
+LOG="$HOME/Library/Logs/board.log"
+ALVO="gui/$(id -u)/$ROTULO"
 
 if [ ! -d "$DIR" ]; then echo "board: não achei a pasta $DIR (defina BOARD_DIR)" >&2; exit 1; fi
 
+# Com o serviço ligado, quem mantém o board no ar é o launchd. Um segundo board.sh no terminal brigaria
+# pela porta (23/10: as duas cópias ficaram se derrubando e "o board não abria").
+servico_ligado() { [ -f "$PLIST" ] && launchctl print "$ALVO" >/dev/null 2>&1; }
+
 case "${1:-}" in
   ""|up|start|subir)
+    if servico_ligado; then
+      launchctl kickstart "$ALVO" 2>/dev/null   # já rodando = não faz nada
+      echo "board: no ar pelo serviço do macOS → http://localhost:$PORTA (Ctrl+C só fecha este log)"
+      exec tail -n 30 -f "$LOG"
+    fi
     exec "$DIR/board.sh"
+    ;;
+  log|logs)
+    exec tail -n 50 -f "$LOG"
+    ;;
+  servico|serviço)
+    case "${2:-}" in
+      ligar|instalar|on)
+        if ! servico_ligado && curl -s -o /dev/null --max-time 2 "http://localhost:$PORTA/"; then
+          echo "board: já há um board no ar fora do serviço (terminal?). Feche-o com Ctrl+C e rode de novo — senão as duas cópias brigam pela porta." >&2; exit 1
+        fi
+        NODE="$(command -v node)"; NODE="$(readlink -f "$NODE" 2>/dev/null || echo "$NODE")"
+        mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
+        # PATH do shell de agora: o launchd não lê o .zshrc, e sem ele não acharia node, claude, gh, codex.
+        # ⚠️ Roda o NODE direto, não o board.sh: o macOS (TCC) nega ~/Documents ao /bin/bash lançado pelo launchd
+        # ("Operation not permitted", provado em 23/10); o node tem a permissão. O laço do board.sh vira o KeepAlive:
+        # o board saiu (↻ = código 75, ou queda), o launchd sobe de novo.
+        cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$ROTULO</string>
+  <key>ProgramArguments</key><array><string>$NODE</string><string>$DIR/board.mjs</string></array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$PATH</string>
+    <key>LANG</key><string>${LANG:-en_US.UTF-8}</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>3</integer>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>LimitLoadToSessionType</key><string>Aqua</string>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
+</dict>
+</plist>
+EOF
+        launchctl bootout "$ALVO" 2>/dev/null
+        launchctl bootstrap "gui/$(id -u)" "$PLIST" && echo "board: serviço ligado — sobe sozinho no login. Log: board log"
+        ;;
+      desligar|remover|off)
+        # Para o board junto: confira antes que nada está rodando (board list).
+        launchctl bootout "$ALVO" 2>/dev/null; rm -f "$PLIST"
+        echo "board: serviço desligado (não sobe mais no login). Para subir na mão: board"
+        ;;
+      *)
+        if servico_ligado; then echo "serviço LIGADO ($PLIST) · log: $LOG"; launchctl print "$ALVO" | grep -E "^\s*(state|pid) =" ;
+        else echo "serviço desligado — 'board servico ligar' faz o board subir sozinho no login"; fi
+        ;;
+    esac
     ;;
   abrir|open)
     open "http://localhost:$PORTA"
     ;;
   ajuda|help|-h|--help)
-    sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
     ;;
   *)
     exec node "$DIR/board-cli.mjs" "$@"

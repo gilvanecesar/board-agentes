@@ -6,7 +6,7 @@
   "description": "Quadro de tarefas do dono com runner de claude — ferramenta local, sem dependência.",
   "scripts": {
     "start": "./board.sh",
-    "check": "node --check board.mjs && node --check board-cli.mjs && node --check busca.mjs",
+    "check": "node --check board.mjs && node --check board-cli.mjs && node --check busca.mjs && node --check navegador-mcp.mjs && node --check permissao-mcp.mjs",
     "test": "node --test --test-timeout=180000 test/*.test.mjs",
     "fotografia": "node test/fotografia.mjs",
     "once": "node board.mjs"
